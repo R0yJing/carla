@@ -1,9 +1,8 @@
-TOTAL_TIMESPAN = 7250
 SAMPLE_TIME = 0.5
 
 import pickle
 import time
-from constants import MAX_BRANCH_BUFFER_SIZE, MAX_REPLAY_BUFFER_SIZE, MAX_TEST_BRANCH_BUFFER_SIZE, MAX_TEST_DATA_SIZE, NOISE_DURATION
+from constants import AUGMENTATION_BATCH_SIZE, MAX_BRANCH_BUFFER_SIZE, MAX_REPLAY_BUFFER_SIZE, MAX_TEST_BRANCH_BUFFER_SIZE, MAX_TEST_DATA_SIZE, NOISE_DURATION
 import random
 import argparse
 from expert import Expert
@@ -12,6 +11,7 @@ from collections import deque
 import math
 import atexit
 from pympler import asizeof
+from image_augmenter import image_augmenter
 
 #subject to change
 AVERAGE_ANGLE_FOR_SHARP_TURN = math.radians(5)
@@ -31,10 +31,21 @@ class recorder:
         self.left_turns = 0 #14303
         self.right_turns = 0 #16661
         self.straight = 0#99999999
-
-        
+        self.temp_img_buffer = []
+        self.augmenter = image_augmenter()
         self.timer = time.time()
-
+    def add_to_buffer(self,trajectory_point):
+        
+        if len(self.temp_img_buffer) == AUGMENTATION_BATCH_SIZE:
+            imgs = self.augmenter.aug([path[0] for path in self.temp_img_buffer])
+            imgs = [img/255 for img in imgs]
+            
+            for i in range(AUGMENTATION_BATCH_SIZE):
+                self.temp_img_buffer[i][0] = imgs[i]
+                self.expert_trajectory.append(self.temp_img_buffer[i])
+            self.temp_img_buffer = []
+        else:
+            self.temp_img_buffer.append(trajectory_point)
     def record(self, env : CarEnv):
         if not self.collect_training_data:
             global MAX_BRANCH_BUFFER_SIZE
@@ -42,7 +53,6 @@ class recorder:
         self.expert_trajectory = []
         #env.reset()
         #observation_records = deque(maxlen=MAX_REPLAY_BUFFER_SIZE)
-
         record_start = time.time()
         last_sample_time = time.time()
         expert = Expert(env)
@@ -55,7 +65,6 @@ class recorder:
         while True:
             
             control = expert.get_action_pid()
-            
             #frequency of noise = 10% 
             if env.training:
                 if time.time() - self.start_timer > time_before_noise:
@@ -84,7 +93,6 @@ class recorder:
                         if time_elapsed > 2.5:
                             print("recovered from noise")
                             self.noise_timer = None
-                    env.w.debug.draw_string(env.get_current_location(), f"{control.steer}", life_time=0.3)
                     control.steer = min(1, control.steer+self.noise_steer)
 
 
@@ -135,8 +143,7 @@ class recorder:
                 else:
                     random.shuffle(self.expert_trajectory)
                     break
-                
-                self.expert_trajectory.append(env.get_path())
+                self.add_to_buffer(env.get_path())
                 print(f"total time = {time.time() - self.timer}")
                 print("size of point")                
                 last_sample_time = time.time()
@@ -148,18 +155,25 @@ class recorder:
         actions = [trajectory[3] for trajectory in self.expert_trajectory]
         import os
         files = None
+        
         if self.collect_training_data:
             print("saved to training folder")
             files = os.listdir(r'.\recordings\training')
-            with open(f'.\\recordings\\training\\recording-{len(files)}.pkl', 'wb') as f:
+
+            savefile = f'.\\recordings\\training\\recording-{len(files)}.pkl'
+            
+            with open(savefile, 'wb') as f:
         
-                pickle.dump([images, speeds, cmds, actions], f)
+                pickle.dump([images, speeds, cmds, actions], f, protocol=4)
         else:
             print("saved to testing folder")
-            files = os.listdir(r'.\recordings\testing')
-            with open(f'.\\recordings\\testing\\recording-{len(files)}-p2.pkl', 'wb') as f:
         
-                pickle.dump([images, speeds, cmds, actions], f)
+            files = os.listdir(r'.\recordings\testing')
+            savefile = f'.\\recordings\\testing\\recording-{len(files)}.pkl'
+
+            with open(savefile, 'wb') as f:
+        
+                pickle.dump([images, speeds, cmds, actions], f, protocol=4)
 
         
         print("size of array")

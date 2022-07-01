@@ -83,16 +83,45 @@ class CarEnv:
         self.sensor_active = True
 
         print(f"angle = {angle / math.pi * 180}")
-        if 40 / 180 * math.pi > angle > -40/180*math.pi:
+        if 30 / 180 * math.pi > angle > -30/180*math.pi:
             print("following")
             return "straight"
         
         #turn right
-        elif -40/180*math.pi >= angle:
+        elif -30/180*math.pi >= angle:
             print("turning left")
             return "left"
 
-        elif 40/180*math.pi <= angle:
+        elif 30/180*math.pi <= angle:
+            print("turning right")
+            return "right"
+        else:
+            print("turn undefined")
+            self.sensor_active = False
+            return "straight"
+            #print("undefined")
+
+    def calc_turn_dir(self, current_dir_vector, previous_dir_vector):
+        
+        #+ve is left
+        #-ve is right
+        angle = self.calculate_angle_between(current_dir_vector, previous_dir_vector)
+
+        # if 2 * math.pi >angle > math.pi:
+        #     angle = -(2 * math.pi - angle)
+        self.sensor_active = True
+
+        print(f"angle = {angle / math.pi * 180}")
+        if 5 / 180 * math.pi > angle > -5/180*math.pi:
+            print("following")
+            return "straight"
+        
+        #turn right
+        elif -5/180*math.pi >= angle:
+            print("turning left")
+            return "left"
+
+        elif 5/180*math.pi <= angle:
             print("turning right")
             return "right"
         else:
@@ -239,13 +268,23 @@ class CarEnv:
         # initial_transform = self.autocar.get_transform()
 
         # init_dist = self.autocar.get_location().distance(self.target_loc)
-        initial_timer = time.time()
         #guide vehicle to drive in the right direction
         self.set_initial_target()
-        while time.time() - initial_timer < 5:
-        
-            self.run_step(self.controller.run_step(TARGET_SPEED, self.current_target_wp))    
+
+        while True:
+            initial_timer = time.time()
+            while time.time() - initial_timer < 5:
+                if self.collision_timer is not None:
+                    self.collision_timer = None
+
+                    break
+                self.run_step(self.controller.run_step(TARGET_SPEED, self.current_target_wp))    
+            if time.time() - initial_timer >= 5:
+                break
+            else:
+                self.teleport()
         print("finished guiding process!")
+        self.waypoint_timer = time.time()
         return self.front_camera, False
 
     def cleanup(self):
@@ -279,7 +318,7 @@ class CarEnv:
         print(asizeof.asizeof([self.front_camera, self.get_speed(), self.current_direction, control]))
         return [self.front_camera, self.get_speed(), self.current_direction, control]
 
-    def get_biased_target_if_any(self, prev_loc, current_loc, dist=13):
+    def get_biased_target_if_any(self, prev_loc, current_loc, dist=10):
 
         wp = self.get_wp_from_loc(current_loc)
         prev_dir_vec = current_loc - prev_loc 
@@ -350,9 +389,11 @@ class CarEnv:
         wp = self.get_wp_from_loc(self.get_current_location())
 
         if self.timedout():
-            self.target_loc = random.choice(wp.next(10)).transform.location
-            self.current_direction = "straight"
-        else:
+
+            new_target_loc = random.choice(wp.next(10)).transform.location
+            self.current_direction = self.calculate_turn_direction(new_target_loc - wp.transform.location, self.target_loc - self.source_loc)
+            self.target_loc = new_target_loc
+        else: #only the noise period
             self.target_loc = self.get_biased_target_if_any(self.source_loc, wp.transform.location, 20)
             self.w.debug.draw_string(self.target_loc, "noise reset", life_time=10)
             self.source_loc = wp.transform.location
@@ -360,8 +401,13 @@ class CarEnv:
         self.waypoint_timer = time.time()
         
     def run_step(self, control):
-        
-        if self.timedout():
+    
+        if self.collision_timer is not None and time.time() - self.collision_timer >= COLLISION_TIMEOUT:
+            self.collision_timer = None
+            print("collided")
+            if self.get_speed() < MIN_SPEED:
+                return self.front_camera, True
+        elif self.collision_timer is None and self.timedout():
             print("timed out, replanning route")
             self.reset_source_and_target()
             self.collision_timer = None
@@ -369,12 +415,6 @@ class CarEnv:
             self.w.debug.draw_string(self.target_loc, "replanned target", life_time=10)
         
         
-        elif self.collision_timer is not None and time.time() - self.collision_timer >= COLLISION_TIMEOUT:
-                self.collision_timer = None
-                print("collided")
-                if self.get_speed() < MIN_SPEED:
-                    return self.front_camera, True
-
         elif self.get_current_location().distance(self.target_loc) < TARGET_TOLERANCE:
             self.total_dist_travelled += self.target_loc.distance(self.source_loc)
             self.update_target()
@@ -403,7 +443,7 @@ class CarEnv:
     def process_img(self, event):
         
         i = np.array(event.raw_data)
-        
+        t = i.dtype
         i.resize((IM_HEIGHT, IM_WIDTH, 4))
         #i2 = i.reshape((IM_HEIGHT, IM_WIDTH, 4))
         i3 = i[:, :, :3]

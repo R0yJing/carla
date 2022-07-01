@@ -12,6 +12,7 @@ import os
 import cv2
 import tensorflow as tf
 from keras.callbacks import ModelCheckpoint, EarlyStopping
+import carla
 #https://stackoverflow.com/questions/39691902/ordering-of-batch-normalization-and-dropout
 
 #source that recommend he_uniform kernel initializer, instead of the default glorot uniform initializer (when using relu as activation)
@@ -23,7 +24,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 from keras.layers import Activation
 #dog_dir = os.listdir(r".\PetImages\Dog")
-CHECKPT_FOLDER_DIR = r".\checkpoints"
+CHECKPT_FOLDER_DIR = r"C:\Users\autpucv\Desktop\my scripts\imitation_learning\checkpoints"#r".\checkpoints"
 def add_fc_block(base_layer, num_units, name, dropout=0.5):
     #first need to add wx+b layer
     #default weight initializer is glorot uniform
@@ -201,9 +202,10 @@ def show_accuracy_graph(histories):
 # print(X2.shape)
 #the model epects two inputs
 import pickle
-
-
-class agent(): 
+import sys
+sys.path.insert(0, r"C:\Users\autpucv\Downloads\CARLA_0.8.2\PythonClient\carla\agent")
+from agent import Agent
+class agent(Agent): 
     
     def __init__(self, fake_training=False, training=True, simulating=False):
         self.histories = []
@@ -464,7 +466,7 @@ metrics=['mse'])
        
         normalised_cmds = []
         
-        images = np.array(images) / 255
+        images = np.array(images) / 255 if images[0].dtype != 'float' else np.array(images)
         speeds = np.array(speeds) / TARGET_SPEED
         left_cmd = [0,0,1]
         right_cmd = [1,0,0]
@@ -489,6 +491,14 @@ metrics=['mse'])
         
         predictions = self.model.predict([images, speeds, commands], len(images), verbose='0')
         return predictions
+
+    def run_step(self, measurements, sensor_data, directions, target):
+
+        s,t,b = self.get_single_action(sensor_data['CameraRGB'].data,
+                                       measurements.player_measurements.forward_speed, directions)
+
+        return carla.VehicleControl(steer=s, throttle=t,brake=s)
+
     def get_single_action(self, image,speed, command):
         steer, throttle, brake = self.get_actions([image], [speed], [command])[0]
         return np.clip(steer, -1, 1), np.clip(throttle, 0, 1), np.clip(brake, 0, 1)
