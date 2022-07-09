@@ -103,7 +103,7 @@ class test_image_module:
             pass
         self.print_info()
         from keras.optimizers import Adam
-        opt = Adam(lr=1e-4, decay=1e-4/NUM_EPOCHS)
+        opt = Adam(lr=1e-4, beta_1=0.7,beta_2=0.85)
         self.model.compile(optimizer=opt, loss='mse', metrics=['mse'])
 
     def add_noise(self, base):

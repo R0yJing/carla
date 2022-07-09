@@ -163,7 +163,7 @@ class recorder:
             savefile = f'.\\recordings\\training\\recording-{len(files)}.pkl'
             
             with open(savefile, 'wb') as f:
-        
+                
                 pickle.dump([images, speeds, cmds, actions], f, protocol=4)
         else:
             print("saved to testing folder")

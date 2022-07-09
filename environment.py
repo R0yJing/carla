@@ -217,10 +217,16 @@ class CarEnv:
         rgb_cam_bp.set_attribute("image_size_x", f"{IM_WIDTH}")
         rgb_cam_bp.set_attribute("image_size_y", f"{IM_HEIGHT}")
         rgb_cam_bp.set_attribute("fov", "110")
-        self.camera = self.w.spawn_actor(rgb_cam_bp, carla.Transform(carla.Location(x=2.5, z=0.7)), attach_to=self.autocar)
+        l, w, h = self.car_dim_info(self.autocar)
+        loc = carla.Location(x=0, y=0, z=2.1*h)
+        self.camera = self.w.spawn_actor(rgb_cam_bp, carla.Transform(loc), attach_to=self.autocar)
+        print(self.autocar.get_transform().location)
+        print(self.autocar.get_location())
+        self.w.debug.draw_string(loc + self.autocar.get_location(), "x", life_time=60)
         self.collision_sensor = self.w.spawn_actor(collision_sensor_bp, carla.Transform(carla.Location(x=2.5, z=0.7)), attach_to=self.autocar)
         self.collision_sensor.listen(lambda event : self.process_collision(event))
         self.camera.listen(self.process_img)
+        
         self.sensors = [self.camera, self.collision_sensor]
 
 
@@ -302,7 +308,7 @@ class CarEnv:
     
     def car_dim_info(self, car):
         bbox = car.bounding_box
-        length, width, height = bbox.extent.x * 2, bbox.extent.y * 2, bbox.extent.z * 2
+        length, width, height = bbox.extent.x, bbox.extent.y, bbox.extent.z
         return length, width, height
     
 
@@ -448,8 +454,8 @@ class CarEnv:
         #i2 = i.reshape((IM_HEIGHT, IM_WIDTH, 4))
         i3 = i[:, :, :3]
 
-        # cv2.imshow("", i3)
-        # cv2.waitKey(1)
+        cv2.imshow("", i3)
+        cv2.waitKey(1)
         self.front_camera = i3
         
 
@@ -464,7 +470,14 @@ class CarEnv:
         self.sensor_active = False
         impulse = math.sqrt(imp.x**2 + imp.y**2 + imp.z**2)
         print(impulse)
+# env =CarEnv(training=True)
+# trans_car = env.autocar.get_transform()
+# trans_car.rotation.pitch -= 90
+# trans_car.location.z += 20
 
+# env.w.debug.draw_string(trans_car.location, "vehicle", life_time=0.1)
+# env.spectator.set_transform(trans_car)
+# time.sleep(9999)
 # while True:
     
 #     trans = autocar.get_transform()

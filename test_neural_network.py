@@ -1,9 +1,10 @@
-from neural_net import *
+from neural_net_v2 import *
 from matplotlib import pyplot as plt
+import cv2 as cv
 agt = agent()
+agt.train()
 #agt.load_n_images(100)
-agt.evaluate()
-#agt.train()
+#agt.evaluate()
 # test = test_module()
 # test.train()
 #im_module = test_image_module()
