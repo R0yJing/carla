@@ -3,7 +3,7 @@
 AUGMENTATION_BATCH_SIZE = 32
 IM_HEIGHT = 88
 IM_WIDTH = 200
-NUM_EPOCHS = 200
+NUM_EPOCHS = 5
 #BATCH_SIZE = 32 #bsize / ep_len = mintimesteps per batch
 TRAIN_BATCH_SIZE = 180
 EP_LEN = 10
