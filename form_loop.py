@@ -43,9 +43,9 @@ def get_all_adjacent_wps(wp):
     return adjs
 
 '''generate a loop of length at least 1000 metres '''
-def form_loop(source_wp, route, total_dist, next_d = 10) -> carla.Waypoint:
+def dfs(source_wp, target_wp, route, total_dist, next_d=10):
     global target, world
-    if source_wp.transform.location == target.transform.location and total_dist > 0:
+    if target_wp.transform.location == target.transform.location and total_dist > 0:
         if total_dist < DESIRED_TOTAL_DIST:
             return None
         print("found a loop!")
@@ -62,3 +62,6 @@ def form_loop(source_wp, route, total_dist, next_d = 10) -> carla.Waypoint:
             else:
                 visited.remove(neighbour)
     return None
+
+def form_loop(source_wp, route, total_dist, next_d = 10) -> carla.Waypoint:
+    return dfs(source_wp, source_wp, total_dist, next_d)

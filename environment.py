@@ -83,22 +83,22 @@ class CarEnv:
         self.sensor_active = True
 
         print(f"angle = {angle / math.pi * 180}")
-        if 30 / 180 * math.pi > angle > -30/180*math.pi:
+        if 35 / 180 * math.pi > angle > -35/180*math.pi:
             print("following")
-            return "straight"
+            return 2
         
         #turn right
-        elif -30/180*math.pi >= angle:
+        elif -35/180*math.pi >= angle:
             print("turning left")
-            return "left"
+            return 3
 
-        elif 30/180*math.pi <= angle:
+        elif 35/180*math.pi <= angle:
             print("turning right")
-            return "right"
+            return 4
         else:
             print("turn undefined")
             self.sensor_active = False
-            return "straight"
+            return 2
             #print("undefined")
 
     def calc_turn_dir(self, current_dir_vector, previous_dir_vector):
@@ -218,7 +218,7 @@ class CarEnv:
         rgb_cam_bp.set_attribute("image_size_y", f"{IM_HEIGHT}")
         rgb_cam_bp.set_attribute("fov", "110")
         l, w, h = self.car_dim_info(self.autocar)
-        loc = carla.Location(x=0, y=0, z=2.1*h)
+        loc = carla.Location(x=l*2/3,z=1.25)#z=2.1*h)
         self.camera = self.w.spawn_actor(rgb_cam_bp, carla.Transform(loc), attach_to=self.autocar)
         print(self.autocar.get_transform().location)
         print(self.autocar.get_location())
@@ -405,6 +405,9 @@ class CarEnv:
             self.source_loc = wp.transform.location
 
         self.waypoint_timer = time.time()
+    def reset_to_last_checkpoint(self):
+        self.autocar.set_transform(self.position_history[-1])
+        control = self.control_history[-1]
         
     def run_step(self, control):
     

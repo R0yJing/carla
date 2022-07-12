@@ -2,7 +2,7 @@ from environment import *
 from expert import Expert 
 from constants import *
 DATA_DIR = "some/dir"
-from neural_net import agent
+from neural_net_v2 import agent
 import time
 from collections import deque
 import carla
@@ -19,7 +19,7 @@ class imitation_learning_trainer:
         self.status_timer = time.time()
         self.expert_steers = []
         self.agent_steers = []
-    
+      #  time.sleep(999)
     # def has_collected_enough_samples_per_episode(self):
     #     if self.episodic_straight_cmd_counter == EPISODIC_BUFFER_LEN / 3 and \
     #     self.episodic_right_cmd_counter == EPISODIC_BUFFER_LEN / 3 and \
@@ -52,13 +52,9 @@ class imitation_learning_trainer:
             brake = 0
         v = self.env.autocar.get_velocity()
         spd = math.sqrt(v.x**2 + v.y**2)
-       
 
         print("acceleration = " + str(self.env.throttle))
-
-
-        #self.env.throttle = np.clip(0, 1, self.env.throttle + (TARGET_SPEED - spd) / (TARGET_SPEED * 1.0))
-        return carla.VehicleControl(steer = steer , throttle=throttle, brake=0)
+        return carla.VehicleControl(throttle=throttle, steer = steer, brake=brake)
 
     def print_status(self, agent_action, expert_action):
         if len(self.expert_steers) < 100:
@@ -66,13 +62,13 @@ class imitation_learning_trainer:
             self.agent_steers.append(agent_action.steer)
     
         expert_action = [expert_action.steer, expert_action.throttle, expert_action.brake]
-
-        print("command = " + self.env.current_direction + "\n" + \
-        "speed = " + str(self.env.get_speed()) + "\n\n" + \
-        "agent action" + "\n" + \
-        str([agent_action.steer, agent_action.throttle, agent_action.brake]) + "\n" +
-        "expert action = \n" + \
-        str(expert_action) + "\n")
+    
+        # print("command = " + self.env.current_direction + "\n" + \
+        # "speed = " + str(self.env.get_speed()) + "\n\n" + \
+        # "agent action" + "\n" + \
+        # str([agent_action.steer, agent_action.throttle, agent_action.brake]) + "\n" +
+        # "expert action = \n" + \
+        # str(expert_action) + "\n")
 
         
     def print_steers(self):
@@ -97,7 +93,7 @@ class imitation_learning_trainer:
             spd = self.env.get_speed()
             command = self.env.current_direction
             ob0 = ob
-            action = self.agent.get_single_action(ob, spd , self.env.current_direction)
+            action = self.agent.get_action(ob, spd , 4) #self.env.current_direction)
             
             agent_control = self.translate_action_to_control(action)
             expert_action = self.expert.get_action_pid()
@@ -115,7 +111,8 @@ class imitation_learning_trainer:
                 self.env.reset()
                # self.env.reset()
             elif time.time() - self.start_time > SAMPLE_TIME: 
-                self.env.w.debug.draw_string(self.env.get_current_location(), self.env.current_direction if self.env.current_direction is not None else "", life_time=SAMPLE_TIME)
+                dirs = ["follow lane", "left", "right"]
+                self.env.w.debug.draw_string(self.env.get_current_location(), f"{dirs[self.env.current_direction - 2]}" if self.env.current_direction is not None else "undefined", life_time=SAMPLE_TIME)
                 self.env.w.debug.draw_string(self.env.get_current_location() + carla.Location(0, y=1), str(int(100*self.env.autocar.get_control().steer)/100.0), life_time=SAMPLE_TIME)
                 if self.env.sensor_active:
                     print("adding sample")

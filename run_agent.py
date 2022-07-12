@@ -3,8 +3,11 @@ import logging
 
 from driving_benchmark import run_driving_benchmark
 from driving_benchmark.experiment_suites import CoRL2017
+from expert import Expert
 
-from neural_net import *
+from neural_net_v2 import *
+from environment import CarEnv
+import time
 # try:
 #     from carla import carla_server_pb2 as carla_protocol
 # except ImportError:
@@ -62,10 +65,36 @@ if (__name__ == '__main__'):
     logging.info('listening to server %s:%s', args.host, args.port)
 
     agent = agent(simulating=True)
+    env = CarEnv(False)
+    timedout = False
+    missed_turns = 0
+    infractions = 0
+    expert = Expert(env)
+    obs, done = env.reset()
+    while not done:
+        if env.timedout():
+            env.reset_to_last_checkpoint()
+            if timedout:
+                if not env.turning():
+                    infractions += 1
+                else:
+                    infractions += 1
+                expert_control = expert.get_action_pid()
+                obs, done = env.run_step(expert_control)
 
+                timedout = False
+            
+        elif env.goes_off_road() or env.collision_timer is not None:
+            obs, done = env.reset_to_last_checkpoint()
+        else:
+            control = agent.get_action(obs, env.get_speed(), "straight")
+            obs, done=env.run_step(control)
+        
+        
+    print(f"missed turns = {env.")
     corl = CoRL2017(args.city_name)
 
     # Now actually run the driving_benchmark
-    run_driving_benchmark(agent, corl, args.city_name,
-                          args.log_name, args.continue_experiment,
-                          args.host, args.port)
+    # run_driving_benchmark(agent, corl, args.city_name,
+    #                       args.log_name, args.continue_experiment,
+    #                       args.host, args.port)
