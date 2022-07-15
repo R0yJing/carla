@@ -34,9 +34,10 @@ NUM_TRAIN_SAMPLES = 74800
 def add_fc_block(base_layer, num_units, name, dropout=0.5):
     #first need to add wx+b layer
     #default weight initializer is glorot uniform
-    temp = Dense(num_units, activation="relu", bias_initializer=initializers.constant(0.1), name=name)(base_layer)
+    temp = Dense(num_units, activation="linear", bias_initializer=initializers.constant(0.1), name=name)(base_layer)
     temp = tf.keras.layers.BatchNormalization()(temp)
-    temp = tf.keras.layers.Dropout(dropout)(temp)
+    #temp = tf.keras.layers.Dropout(dropout)(temp)
+    temp = Activation('relu')(temp)
     return temp
 
 def add_test_fc_block(base_layer, num_units, name):
@@ -45,11 +46,10 @@ def add_test_fc_block(base_layer, num_units, name):
 def add_conv_block(base_layer, filters, kern_size, strides, name, dropout=0.2):
     #if input_shape is not None:
     #print("input layer")
-    temp = Conv2D(filters, kernel_size=kern_size, strides=strides, padding="valid", bias_initializer=initializers.constant(0.1), activation='relu', name=name)(base_layer)
+    temp = Conv2D(filters, kernel_size=kern_size, strides=strides, padding="valid", bias_initializer=initializers.constant(0.1), name=name)(base_layer)
      #   base_layer.add(tf.keras.layers.Conv2D(filters, kernel_size=kern_size, strides=strides, padding="valid", activation='relu'))
     temp = tf.keras.layers.BatchNormalization()(temp)
-    temp = tf.keras.layers.Dropout(dropout)(temp) 
-
+    temp = Activation('relu')(temp)
     return temp
 def get_img_array(idx):
     #print(dog_dir[idx])
@@ -442,7 +442,7 @@ metrics=['mse', 'accuracy'])
 
         files = os.listdir(CHECKPT_FOLDER_DIR)
         checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights.best.testing.225epochs.patience3.batch_size180.validation0.33_1.hdf5")
-        return
+    
         if len(files) != 1:
             print("no checkpoints saved!")
         else:
@@ -450,7 +450,7 @@ metrics=['mse', 'accuracy'])
             print(f"found checkpoint : {files[0]}")
             checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights.best.testing.225epochs.patience3.batch_size180.validation0.33_1.hdf5")
 
-            self.model.load_weights(checkpt)
+            #self.model.load_weights(checkpt)
     
     def create_model(self):
         spd_module = mlp(1, "speed")
@@ -576,7 +576,7 @@ metrics=['mse', 'accuracy'])
         n_val_samples =15520#2880
         train_search_indices = []
         
-        val_data = self.get_samples(valFiles, 1200, dict())
+        val_data = self.get_samples(valFiles, n_val_samples, dict())
         val_x = [np.array([sample[0] for sample in val_data]), np.array([sample[1] for sample in val_data]), np.array([sample[2] for sample in val_data])]
         val_y = np.array([sample[3] for sample in val_data])
         histories = []
@@ -584,7 +584,7 @@ metrics=['mse', 'accuracy'])
         s = time.time()
         samples = self.get_samples(trainFiles, n_train_samples, dict())
     
-        history = self.model.fit(Generator(samples), steps_per_epoch=n_train_samples//120, batch_size=120, epochs=5, shuffle=True, callbacks=[self.checkpoint, self.early_stopping], validation_data=(val_x, val_y))
+        history = self.model.fit(Generator(samples), steps_per_epoch=n_train_samples//120, batch_size=120, epochs=10, shuffle=True, callbacks=[self.checkpoint, self.early_stopping], validation_data=(val_x, val_y))
            
     
         self.show_graph([history], time.time() - s)
@@ -630,9 +630,9 @@ metrics=['mse', 'accuracy'])
         
         images = np.array(images) / 255 if images[0].dtype != 'float' else np.array(images)
         speeds = np.array(speeds) / TARGET_SPEED
-        left_cmd = [0,0,1]
-        right_cmd = [1,0,0]
-        straight_cmd = [0,1,0]
+        left_cmd = [0,1,0]
+        right_cmd = [0,0,1]
+        straight_cmd = [1,0,0]
         left = 0
         right = 0
         straight = 0

@@ -5,7 +5,7 @@ agt = agent()
 #agt.test_batch_gen(None)
 #agt.train()
 
-agt.load_n_images(100)
+#agt.load_n_images(100)
 agt.evaluate()
 # test = test_module()
 # test.train()
