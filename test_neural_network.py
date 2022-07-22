@@ -1,12 +1,75 @@
-from neural_net_v2 import *
+from neural_net_v4 import *
 from matplotlib import pyplot as plt
 import cv2 as cv
-agt = agent()
-#agt.test_batch_gen(None)
-#agt.train()
+from load_data_v2_mask import load_data
+#im, spd, cmd, act = load_data()
 
+agt = agent()
+agt.train()
+try:
+    files = os.listdir(CHECKPT_FOLDER_DIR)
+    model = tf.keras.models.load_model(CHECKPT_FOLDER_DIR)
+    agt.model = model
+    file = r"C:\Users\autpucv\Desktop\my scripts\imitation_learning\coiltrain_dataset\CoILTrain\episode_00000\measurements_00001.json"
+    im = r"C:\Users\autpucv\Desktop\my scripts\imitation_learning\coiltrain_dataset\CoILTrain\episode_00000"
+    im_left = imageio.imread(im + "\\LeftRGB_00001.png")
+    im_centre = imageio.imread(im + "\\CentralRGB_00001.png")
+    im_right = imageio.imread(im + "\\RightRGB_00001.png")
+                
+    with open(file, 'rb') as f:
+        data = json.load(f)
+        steer = data['steer']
+        speed = data['playerMeasurements']['forwardSpeed'] 
+        throttle = data['throttle']
+        brake = data['brake']
+        cmd = int(data["directions"])
+        print(agt.get_action(im_centre, speed, cmd))
+        print(agt.get_action(im_left, speed, cmd))
+        print(agt.get_action(im_right, speed, cmd))
+        print(steer, throttle, brake)
+    
+except Exception as e:
+    print("cant load")
+#agt.train()
+print(agt.get_action(np.random.uniform(0,255,(88,200,3)), 30, 2))
+print(agt.model.summary())
+data = load_data_2()
+
+agt.model.fit(Generator(data, 12), batch_size=12, epochs=10, callbacks=[agt.early_stopping, agt.checkpoint])
+
+
+eye = np.eye(4).astype('uint8').tolist()
+lefts = []
+rights = []
+for i, s, c, a in zip(im, spd, cmd, act):
+    pa = 0
+    if (c == np.array([0,1,0,0])).all():
+     
+        pa = agt.get_action(i, s * TARGET_SPEED, 3)
+        lefts.append((pa, a))
+    elif (c == np.array([0,0,1,0])).all():
+    
+        pa = agt.get_action(i, s * TARGET_SPEED, 4)
+        rights.append((pa, a))
+
+print("left")
+for l in lefts:
+    print("predicted")
+    print(l[0])
+    print("real")
+    print(l[1])
+    print()
+for r in rights:
+    print("predicted")
+    print(r[0])
+    print("real")
+    print(r[1])
+    print()
+#agt.test_batch_gen(None)
+agt.train()
+#load_data(False)
 #agt.load_n_images(100)
-agt.evaluate()
+#agt.evaluate()
 # test = test_module()
 # test.train()
 #im_module = test_image_module()

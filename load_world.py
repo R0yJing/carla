@@ -9,7 +9,8 @@ args = parser.parse_args()
 #stdout, stderr = p.communicate()
 print(args.port)
 cl = carla.Client('localhost', int(args.port))
-cl.load_world(args.town, carla.MapLayer.All & ~(carla.MapLayer.Props))
+cl.set_timeout(5000)
+cl.load_world(args.town)
 
 # topology = cl.get_world().get_map().get_topology()
 # for w0, w1 in topology:

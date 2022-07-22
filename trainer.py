@@ -2,10 +2,11 @@ from environment import *
 from expert import Expert 
 from constants import *
 DATA_DIR = "some/dir"
-from neural_net_v2 import agent
+from neural_net_v4 import agent
 import time
 from collections import deque
 import carla
+from load_data_v2_mask import load_data_2
 
 class imitation_learning_trainer:
     def __init__(self):
@@ -18,7 +19,7 @@ class imitation_learning_trainer:
         self.episodic_straight_cmd_counter = 0
         self.status_timer = time.time()
         self.expert_steers = []
-        self.agent_steers = []
+        self.agent_steers = [] 
       #  time.sleep(999)
     # def has_collected_enough_samples_per_episode(self):
     #     if self.episodic_straight_cmd_counter == EPISODIC_BUFFER_LEN / 3 and \
@@ -30,11 +31,11 @@ class imitation_learning_trainer:
     #         return True
     #     return False
     def try_add_sample(self, img, speed, cmd,action):
-        if cmd == "left" and self.episodic_left_cmd_counter < EPISODIC_BUFFER_LEN / 3:
+        if cmd == 3 and self.episodic_left_cmd_counter < EPISODIC_BUFFER_LEN / 3:
             self.episodic_left_cmd_counter += 1
-        elif cmd == "straight" and self.episodic_straight_cmd_counter < EPISODIC_BUFFER_LEN / 3:
+        elif cmd == 2 and self.episodic_straight_cmd_counter < EPISODIC_BUFFER_LEN / 3:
             self.episodic_straight_cmd_counter += 1
-        elif cmd == "right" and self.episodic_right_cmd_counter < EPISODIC_BUFFER_LEN / 3:
+        elif cmd == 4 and self.episodic_right_cmd_counter < EPISODIC_BUFFER_LEN / 3:
             self.episodic_right_cmd_counter += 1
         else: return 
 
@@ -50,10 +51,11 @@ class imitation_learning_trainer:
         #avoid fake braking
         if brake < 0.1:
             brake = 0
+        brake =0
+        # if self.env.current_direction == 5:
+        #     steer = 0
         v = self.env.autocar.get_velocity()
-        spd = math.sqrt(v.x**2 + v.y**2)
 
-        print("acceleration = " + str(self.env.throttle))
         return carla.VehicleControl(throttle=throttle, steer = steer, brake=brake)
 
     def print_status(self, agent_action, expert_action):
@@ -83,6 +85,7 @@ class imitation_learning_trainer:
         plt.show()
     def sample_and_relabel_trajectory(self):
         ob, done = self.env.reset()
+        #self.expert.set_dest()
         self.status_timer = time.time()
         #try to start the car
         #each sample should be 1km long?
@@ -93,15 +96,15 @@ class imitation_learning_trainer:
             spd = self.env.get_speed()
             command = self.env.current_direction
             ob0 = ob
-            action = self.agent.get_action(ob, spd , 4) #self.env.current_direction)
-            
+           
+            action = self.agent.get_action(ob, spd, self.env.current_direction)
+            if self.env.current_direction == 3 or self.env.current_direction == 4:
+                print("current direction " + str(self.env.current_direction))
+                print("action" + str(action))
             agent_control = self.translate_action_to_control(action)
             expert_action = self.expert.get_action_pid()
 
-            if time.time() - self.status_timer >= 0.5:
-                self.status_timer = time.time()
-                self.print_status(agent_control, expert_action)
-
+            
             ob, done = self.env.run_step(agent_control)
             expert_action = [expert_action.steer, expert_action.throttle, expert_action.brake]
           
@@ -111,7 +114,7 @@ class imitation_learning_trainer:
                 self.env.reset()
                # self.env.reset()
             elif time.time() - self.start_time > SAMPLE_TIME: 
-                dirs = ["follow lane", "left", "right"]
+                dirs = ["follow lane", "left", "right","straight"]
                 self.env.w.debug.draw_string(self.env.get_current_location(), f"{dirs[self.env.current_direction - 2]}" if self.env.current_direction is not None else "undefined", life_time=SAMPLE_TIME)
                 self.env.w.debug.draw_string(self.env.get_current_location() + carla.Location(0, y=1), str(int(100*self.env.autocar.get_control().steer)/100.0), life_time=SAMPLE_TIME)
                 if self.env.sensor_active:
@@ -119,16 +122,16 @@ class imitation_learning_trainer:
                     self.try_add_sample(ob0, spd, command, expert_action)
                 if self.episodic_left_cmd_counter < EPISODIC_BUFFER_LEN / 3:
                     
-                    self.env.set_turn_bias("left") 
+                    self.env.set_turn_bias(3) 
                 elif self.episodic_straight_cmd_counter< EPISODIC_BUFFER_LEN / 3:
-                    self.env.set_turn_bias("straight")
+                    self.env.set_turn_bias(2)
                 elif self.episodic_right_cmd_counter < EPISODIC_BUFFER_LEN / 3:
-                    self.env.set_turn_bias("right")
+                    self.env.set_turn_bias(4)
                 else: 
                     self.episodic_left_cmd_counter = self.episodic_straight_cmd_counter = self.episodic_right_cmd_counter = 0
                     return
                 self.start_time = time.time()
-        
+    
     #path is the rollout of the current policy
     def main_loop(self):
         #self.agent.train()

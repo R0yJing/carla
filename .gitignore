@@ -5,3 +5,5 @@ experiments.py
 *.h5
 *.pyc
 *.hdf5
+*.png
+*.json
