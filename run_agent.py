@@ -73,7 +73,6 @@ if (__name__ == '__main__'):
     obs, done = env.reset()
     while not done:
         if env.timedout():
-            env.reset_to_last_checkpoint()
             if timedout:
                 if not env.turning():
                     infractions += 1
@@ -83,7 +82,9 @@ if (__name__ == '__main__'):
                 obs, done = env.run_step(expert_control)
 
                 timedout = False
-            
+            else:
+                env.reset_to_last_checkpoint()
+
         elif env.goes_off_road() or env.collision_timer is not None:
             obs, done = env.reset_to_last_checkpoint()
         else:
@@ -91,8 +92,7 @@ if (__name__ == '__main__'):
             obs, done=env.run_step(control)
         
         
-    print(f"missed turns = {env.")
-    corl = CoRL2017(args.city_name)
+    
 
     # Now actually run the driving_benchmark
     # run_driving_benchmark(agent, corl, args.city_name,

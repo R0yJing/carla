@@ -1,45 +1,60 @@
+from itertools import count
 from environment import *
 from expert import Expert 
 from constants import *
 DATA_DIR = "some/dir"
-from neural_net_v4 import agent
+from neural_net_v2 import agent
 import time
 from collections import deque
 import carla
-from load_data_v2_mask import load_data_2
-
+from lateral_augmentations import augment_steering
 class imitation_learning_trainer:
-    def __init__(self):
+    def __init__(self, debug=False):
         #disable the timeout when training
         self.env = CarEnv(training=True, port=2000)
-        self.expert = Expert(self.env)
-        self.agent = agent(fake_training=True)
-        self.episodic_left_cmd_counter = 0
-        self.episodic_right_cmd_counter = 0
-        self.episodic_straight_cmd_counter = 0
+        #self.expert = Expert(self.env)
+        self.agent = agent(debug)
+        self.left_turns_counter = 0
+        self.right_turns_counter = 0
+        self.follow_lane_counter = 0
         self.status_timer = time.time()
         self.expert_steers = []
         self.agent_steers = [] 
+        self.counters = [0,0,0]
+        self.debug = debug
+    def DR(self, observation, iter, beta):
+        ob, spd, cmd = observation 
+        
+        if beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated():
+            print("switching to expert control")
+            return self.env.expert.get_action()
+        else:
+            print("switching to agent control")
+            s,t,b=self.agent.get_action(ob[0], spd, cmd)
+            return carla.VehicleControl(steer=s, throttle=t, brake=b)
       #  time.sleep(999)
     # def has_collected_enough_samples_per_episode(self):
-    #     if self.episodic_straight_cmd_counter == EPISODIC_BUFFER_LEN / 3 and \
-    #     self.episodic_right_cmd_counter == EPISODIC_BUFFER_LEN / 3 and \
-    #     self.episodic_left_cmd_counter == EPISODIC_BUFFER_LEN / 3:
-    #         self.episodic_left_cmd_counter = 0
-    #         self.episodic_right_cmd_counter = 0
-    #         self.episodic_straight_cmd_counter = 0
+    #     if self. follow_lane_counter == EPISODIC_BUFFER_LEN / 3 and \
+    #     self.right_turns_counter == EPISODIC_BUFFER_LEN / 3 and \
+    #     self.left_turns_counter == EPISODIC_BUFFER_LEN / 3:
+    #         self.left_turns_counter = 0
+    #         self.right_turns_counter = 0
+    #         self. follow_lane_counter = 0
     #         return True
     #     return False
-    def try_add_sample(self, img, speed, cmd,action):
-        if cmd == 3 and self.episodic_left_cmd_counter < EPISODIC_BUFFER_LEN / 3:
-            self.episodic_left_cmd_counter += 1
-        elif cmd == 2 and self.episodic_straight_cmd_counter < EPISODIC_BUFFER_LEN / 3:
-            self.episodic_straight_cmd_counter += 1
-        elif cmd == 4 and self.episodic_right_cmd_counter < EPISODIC_BUFFER_LEN / 3:
-            self.episodic_right_cmd_counter += 1
-        else: return 
+    def try_add_sample(self, obs, action):
+        imgs, speed, cmd = obs
+        left_bias_steer = augment_steering(-45, action[0], speed)
+        right_bias_steer = augment_steering(45, action[0], speed)
+        left_bias_action = [left_bias_steer] + action[1:]
+        right_bias_action = [right_bias_steer] + action[1:]
 
-        self.agent.insert_input(img, speed, cmd, action)
+        self.counters[cmd - 2] += 3
+
+        self.agent.insert_input(imgs[0], speed, cmd, action)
+        self.agent.insert_input(imgs[1], speed, cmd, left_bias_action)
+        self.agent.insert_input(imgs[2], speed, cmd, right_bias_action)
+
     def sample_and_relabel_trajectories(self):
         timesteps = 0
         #this is not mini batch size
@@ -51,7 +66,7 @@ class imitation_learning_trainer:
         #avoid fake braking
         if brake < 0.1:
             brake = 0
-        brake =0
+        
         # if self.env.current_direction == 5:
         #     steer = 0
         v = self.env.autocar.get_velocity()
@@ -83,66 +98,73 @@ class imitation_learning_trainer:
         plt.xlabel('time')
         plt.legend(['expert', 'agent'], loc='upper left')
         plt.show()
-    def sample_and_relabel_trajectory(self):
+    def collected_enough_samples(self):
+        return min(self.counters) >= 3
+    def sample_and_relabel_trajectory(self, i_iter):
+        
+        # if self.debug:
+        #     rand_img = np.random.uniform(0, 255, (88, 200, 3)).astype('uint8')
+        #     for i in range(3):
+                
+        #         self.try_add_sample(((rand_img, rand_img, rand_img), 10, i + 2), [1,2,3])
+        #     return
         ob, done = self.env.reset()
-        #self.expert.set_dest()
         self.status_timer = time.time()
         #try to start the car
         #each sample should be 1km long?
-        while True:
+        beta = 0.75
+        t = time.time()
+        while (time.time() - t < TOTAL_SAMPLE_TIME):
+            
+            preferred_turn = self.counters.index(min(self.counters)) + 2
+
             # if len(self.expert_steers) == 50:
             #     self.print_steers()
             #     return 
-            spd = self.env.get_speed()
-            command = self.env.current_direction
-            ob0 = ob
-           
-            action = self.agent.get_action(ob, spd, self.env.current_direction)
-            if self.env.current_direction == 3 or self.env.current_direction == 4:
-                print("current direction " + str(self.env.current_direction))
-                print("action" + str(action))
-            agent_control = self.translate_action_to_control(action)
-            expert_action = self.expert.get_action_pid()
-
+        
+            drive_action = self.DR(ob, i_iter, beta)
             
-            ob, done = self.env.run_step(agent_control)
-            expert_action = [expert_action.steer, expert_action.throttle, expert_action.brake]
-          
-
-           
+            
+            # if self.env.current_direction == 3 or self.env.current_direction == 4:
+            #     print("turning")
+            #     pass
+            #agent_control = self.translate_action_to_control(action)
+            expert_action = self.env.expert.get_action()
+        
+            ob, done = self.env.run_step(drive_action)
+            #in case a collision occurred or something reset
             if done:
                 self.env.reset()
-               # self.env.reset()
-            elif time.time() - self.start_time > SAMPLE_TIME: 
-                dirs = ["follow lane", "left", "right","straight"]
+                self.expert = Expert(self.env)
+                continue
+            expert_action = [expert_action.steer, expert_action.throttle, expert_action.brake]
+            if self.env.target_updated:
+                self.env.set_turn_bias(preferred_turn)
+                self.env.target_updated = False 
+        
+            if time.time() - self.start_time > SAMPLE_TIME: 
+                dirs = ["follow lane", "left", "right"]
                 self.env.w.debug.draw_string(self.env.get_current_location(), f"{dirs[self.env.current_direction - 2]}" if self.env.current_direction is not None else "undefined", life_time=SAMPLE_TIME)
-                self.env.w.debug.draw_string(self.env.get_current_location() + carla.Location(0, y=1), str(int(100*self.env.autocar.get_control().steer)/100.0), life_time=SAMPLE_TIME)
                 if self.env.sensor_active:
                     print("adding sample")
-                    self.try_add_sample(ob0, spd, command, expert_action)
-                if self.episodic_left_cmd_counter < EPISODIC_BUFFER_LEN / 3:
-                    
-                    self.env.set_turn_bias(3) 
-                elif self.episodic_straight_cmd_counter< EPISODIC_BUFFER_LEN / 3:
-                    self.env.set_turn_bias(2)
-                elif self.episodic_right_cmd_counter < EPISODIC_BUFFER_LEN / 3:
-                    self.env.set_turn_bias(4)
-                else: 
-                    self.episodic_left_cmd_counter = self.episodic_straight_cmd_counter = self.episodic_right_cmd_counter = 0
-                    return
+                    self.try_add_sample(ob, expert_action)
+
                 self.start_time = time.time()
     
     #path is the rollout of the current policy
     def main_loop(self):
-        #self.agent.train()
-        self.measure_disk_timer = time.time()
+        
         self.start_time = time.time()
-        for i in range(3):
+        i = 0
+        stopped = False
+        while not stopped and i < N_ITER:
             print(f"iteration {i}")
-            self.sample_and_relabel_trajectories()
-            self.agent.train()
-        self.agent.show_accuracy_graph()
+            self.sample_and_relabel_trajectory(i)
+            stopped = self.agent.train()
+            i += 1
+        self.agent.show_graph()
+        #self.show_statistics()
+        
 
-
-trainer = imitation_learning_trainer()
+trainer = imitation_learning_trainer(True)
 trainer.main_loop()

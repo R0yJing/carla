@@ -1,10 +1,18 @@
-from neural_net_v4 import *
+from neural_net_v2 import *
 from matplotlib import pyplot as plt
 import cv2 as cv
 from load_data_v2_mask import load_data
 #im, spd, cmd, act = load_data()
-
+class history:
+    def __init__(self):
+        base = random.randint(10,100)
+        r = random.random()
+        self.history = {'val_accuracy' : [base * r ** i for i in range(10)], 'accuracy' : [base * r ** i/10 for i in range(10)]}
 agt = agent()
+agt._show_graph([history(), history(), history()], "accuracy")
+agt.train()
+h = agt.model.fit(Generator(data, 12), validation_data=Generator(data, 12), batch_size=12, epochs=10, callbacks=[agt.early_stopping, agt.checkpoint])
+agt.show_plots(h)
 agt.train()
 try:
     files = os.listdir(CHECKPT_FOLDER_DIR)

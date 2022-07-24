@@ -1,16 +1,14 @@
 
 
-from re import sub
-from turtle import right
+
 from matplotlib import pyplot as plt
-from pyrsistent import s 
 from constants import BATCH_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
 import h5py
 from collections import deque 
 from random import sample, shuffle
 from keras.models import Model, Sequential
 from keras.layers import Dense, Input, Flatten, Conv2D, Reshape, concatenate, Multiply, Activation, Lambda
-
+from keras.losses import MeanSquaredError
 from keras import initializers
 import numpy as np
 import os
@@ -32,11 +30,21 @@ from load_data_v2_mask import *
 
 
 from image_augmenter import image_augmenter
-import tensorflow.keras.backend as K
+
 #dog_dir = os.listdir(r".\PetImages\Dog")
 CHECKPT_FOLDER_DIR = r"C:\Users\autpucv\Desktop\my scripts\imitation_learning\checkpoints"#r".\checkpoints"
 NUM_TRAIN_SAMPLES = 74800
 
+def custom_mse(y_true, y_pred):
+            mask = tf.constant([0,0,0])
+            l_and = tf.logical_and
+            l_not = tf.logical_not
+            reduce = tf.math.reduce_all
+            m=l_not(l_and(reduce(K.equal(y_true,mask),axis=1), reduce(K.equal(y_pred, mask),axis=1)))
+            
+            return MeanSquaredError()(y_true[m], y_pred[m])
+        
+        
 def add_fc_block(base_layer, num_units, name, dropout=0.5):
     #first need to add wx+b layer
     #default weight initializer is glorot uniform
@@ -218,6 +226,7 @@ def show_accuracy_graph(histories):
 import pickle
 import sys
 from keras.utils import Sequence
+import keras.backend as K
 sys.path.insert(0, r"C:\Users\autpucv\Downloads\CARLA_0.8.2\PythonClient\carla\agent")
 from agent import Agent
 class Generator(Sequence):
@@ -255,7 +264,6 @@ class Generator(Sequence):
         left_actions = np.array([action[1] for action in batch_actions])
         right_actions = np.array([action[2] for action in batch_actions])
         straight_actions = np.array([action[3] for action in batch_actions])
-        print(follow_lane_actions.shape)
         return ([batch_img, batch_speeds, batch_masks], [follow_lane_actions, left_actions, right_actions, straight_actions])
     
     def on_epoch_end(self):
@@ -264,6 +272,8 @@ class agent(Agent):
     
     def __init__(self, fake_training=False, training=True, simulating=False):
         self.histories = []
+        self.mse = tf.keras.losses.MeanSquaredError()
+        
         self.suggested_actions = []
         self.num_errors = 0
         self.num_inputs_added = 0
@@ -314,17 +324,15 @@ class agent(Agent):
         
         opt = Adam(lr=1e-4)
         #large errors are heavily penalised with the mean squared error
-        self.model.compile(loss='mean_squared_error', optimizer=opt, 
-    metrics=['mse', 'accuracy'])
+        tf.config.run_functions_eagerly(True)
+        tf.data.experimental.enable_debug_mode()
+        self.model.compile(loss=custom_mse, optimizer=opt, 
+    metrics=['mse'], run_eagerly=True)
         self.split = math.ceil(MAX_REPLAY_BUFFER_SIZE * 0.2)
-
-    def dump(self, filename):
-        with open(filename, 'wb') as f:
-            pickle.dump([self.train_images,
-                        self.train_speeds,
-                        self.train_cmds,
-                        self.train_actions], f)
     
+    
+        
+        
     def load_n_images(self, n, filename=r'.\recordings\training\recording-p1.pkl'):
         with open(filename, 'rb') as f:
             d = pickle.load(f)
@@ -459,10 +467,10 @@ class agent(Agent):
                 self.test_actions += [act for act in normalised_actions]
                 self.test_speeds += [spd for spd in normalised_speeds]
     def try_load_model(self):
-        return
-        #self.model = tf.keras.models.load_model(CHECKPT_FOLDER_DIR)
+        
+        self.model = tf.keras.models.load_model(CHECKPT_FOLDER_DIR +r"\weights_multi_branch")
         #self.model.save_weights(CHECKPT_FOLDER_DIR + r"\weights_multi_branch.hdf5")
-        self.model.load_weights(CHECKPT_FOLDER_DIR + r"\weights_multi_branch.hdf5")
+        #self.model.load_weights(CHECKPT_FOLDER_DIR + r"\weights_multi_branch")
     def try_load_weights(self):
 
         files = os.listdir(CHECKPT_FOLDER_DIR)
@@ -535,23 +543,27 @@ class agent(Agent):
         acc = self.model.evaluate(x=[np.array(self.test_images), np.array(self.test_speeds), np.array(self.test_cmds)], y=np.array(self.test_actions))
 
         return
+    def _show_plots(self, history, metric):
+        history = history.history
+        histories = [history[f'val_multiply_{metric}']] + [history[f'val_multiply_{i}_{metric}'] for i in range(1,4)]
+        plt.title(metric)
+        plt.plot(history[f'multiply_{metric}'])
+        plt.plot(history[f'val_multiply_{metric}'])
+        for i in range(1,4):
+
+            plt.plot(history[f'multiply_{i}_{metric}'])
+            plt.plot(history[f'val_multiply_{i}_{metric}'])
         
+        plt.plot(np.average(histories, axis=0).tolist())
+        plt.title(metric)
+        plt.ylabel(metric)
+        plt.xlabel('epoch')
+        plt.legend([(f'train{i // 2}') if i % 2 == 0 else f'val{(i - 1)//2}' for i in range(8) ] + ['average_train', 'average_val'], loc='upper left')
     def show_plots(self, history):
         #accuracy
-        history = history.history
-        plt.plot(history['mse'])
-        plt.plot(history['val_mse'])
-        plt.title('model mean sq err')
-        plt.ylabel('mse')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'val'], loc='upper left')
-        #loss
-        plt.plot(history['accuracy'])
-        plt.plot(history['val_accuracy'])
-        plt.title('model accuracy')
-        plt.ylabel('accuracy')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'val'], loc='right')
+        self._show_plots(history, "mse")
+        plt.figure()
+        self._show_plots(history, "accuracy")
         plt.show()
     def get_train_samples(self, filenames, size=1):
     
@@ -610,8 +622,11 @@ class agent(Agent):
         
         #val_generators = [Generator(val_data[0], 40), Generator(val_data[1], 40), Generator(val_data[2], 40), Generator(val_data[3], 40)] 
         #samples = self.get_samples(trainFiles, n_train_samples, dict())
-        self.model.fit(Generator(train_data), batch_size=BATCH_SIZE, validation_data=Generator(val_data), epochs=10, callbacks=[self.early_stopping, self.checkpoint])
-            
+        
+        history = self.model.fit(Generator(train_data), batch_size=BATCH_SIZE, validation_data=Generator(val_data), epochs=10, callbacks=[self.early_stopping, self.checkpoint])
+        self.show_plots(history) 
+        import keras.backend as K
+        K.flatten()
         #self.show_graph([history], time.time() - s)
         # history = self.model.fit_generator(self.batch_generator(False, n_train_samples), steps_per_epoch=n_train_samples / 120,
         #     validation_steps=n_val_samples / 120, epochs=5, validation_data=self.batch_generator(True, n_val_samples),

@@ -82,11 +82,11 @@ def load_data(load_train=True, debug=False):
                         #     continue
                             #print(agt.get_action(im_centre, speed, int(data['directions'])))
                         
-                        # if load_train and sum(commands_ct) == 12:
-                        #     fin = True
-                        #     break
-                        # if load_train and commands_ct[int(data['directions']) - 2] == 3:
-                        #     continue
+                        if sum(commands_ct) == 12:
+                            fin = True
+                            break
+                        if commands_ct[int(data['directions']) - 2] == 3:
+                            continue
                         if load_train and sum(commands_ct) == num_train_files:
                              fin = True
                              break

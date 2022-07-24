@@ -7,3 +7,4 @@ experiments.py
 *.hdf5
 *.png
 *.json
+checkpoints/

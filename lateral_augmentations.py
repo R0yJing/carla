@@ -35,11 +35,3 @@ for i in range(30):
     normal_spd.append(augment_steering(-35,-i/30,10))
     small_spd.append(augment_steering(-35, -i/30,10/30))
    
-import matplotlib.pyplot as plt
-plt.plot(small_spd)
-plt.plot(normal_spd)
-plt.title('')
-plt.ylabel('steer')
-plt.xlabel('speed')
-plt.legend(['small', 'normal'], loc='upper left')
-plt.show()
