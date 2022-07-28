@@ -4,7 +4,6 @@ recordings/training/normalised-recording
 experiments.py
 *.h5
 *.pyc
-*.hdf5
 *.png
 *.json
 checkpoints/

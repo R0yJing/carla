@@ -27,17 +27,4 @@ class image_augmenter:
         #a list of 3d images in the form of (h,w,channels)
         images_aug = self.augment(images=images)
         return images_aug
-    def normalise_samples(self,  images, speeds, commands, grayscale=False):
-       
-        normalised_cmds = []
-        
-        images = np.array(images) / 255
-        speeds = np.array(speeds) / TARGET_SPEED
-        left_cmd = [0,0,1]
-        right_cmd = [1,0,0]
-        straight_cmd = [0,1,0]
-        left = 0
-        right = 0
-        straight = 0
-        normalised_cmds = [left_cmd if cmd == "left" else straight_cmd if cmd == "straight" else right_cmd for cmd in commands]
-        return images, speeds, np.array(normalised_cmds)
+    

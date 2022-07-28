@@ -25,8 +25,8 @@ num_val_files = 0
 def load_data(load_train=True, debug=False):
     global errors, num_train_files, num_val_files, DEBUG_BATCH_SIZE
 
-    num_train_files = 22116 * 3
-    num_val_files = int(num_train_files * 0.33 // 3 * 3) if not debug else 9
+    num_train_files = 22116 * 3 if not debug else 9
+    num_val_files = 24000 if not debug else 9
 
     commands_ct = [0,0,0,0]
 
@@ -58,11 +58,15 @@ def load_data(load_train=True, debug=False):
             for measurement, left, centre, right in zip(measurement_files, centre_image_files, left_image_files, right_image_files):
                 
                 
-            
                 im_left = imageio.imread(left)
                 im_centre = imageio.imread(centre)
                 im_right = imageio.imread(right)
+                if not load_train:
+                    im_centre = im_centre.astype('float32') /255
+                    im_left = im_left.astype('float32')/255
+                    im_right = im_right.astype('float32')/255
                 
+                  
                 try:
                     with open(measurement, 'rb') as fp:
                         
@@ -80,7 +84,7 @@ def load_data(load_train=True, debug=False):
                             #print(agt.get_action(im_centre, speed, int(data['directions'])))
                         
                         
-                        if not load_train and sum(commands_ct) == num_val_files:
+                        if not load_train and sum(commands_ct) >= num_val_files:
                              fin = True
                              break
                         elif load_train and debug and sum(commands_ct) == DEBUG_BATCH_SIZE * 4:

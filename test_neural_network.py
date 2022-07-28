@@ -1,14 +1,32 @@
 from neural_net_v2 import *
 from matplotlib import pyplot as plt
 import cv2 as cv
-from load_data_v2_mask import load_data
 #im, spd, cmd, act = load_data()
-class history:
-    def __init__(self):
-        base = random.randint(10,100)
-        r = random.random()
-        self.history = {'val_accuracy' : [base * r ** i for i in range(10)], 'accuracy' : [base * r ** i/10 for i in range(10)]}
-agt = agent()
+agt = agent(train_initial_policy=True)
+agt.train()
+#sample = load_data(load_train=False)
+
+steers = []
+predicted_steers = []
+vec_cmds= np.eye(4)
+agt.insert_input(np.random.uniform(0,255,(88,200,3)).astype('uint8'),30, 2, [1,2,3])
+agt.model.evaluate([s for s in sample[:3]], sample[3])
+for sample in agt.val_data:
+    sample[0] *= 255
+    sample[1] *= 30
+    cmd = sample[2]
+    cmd = 2 if (vec_cmds[0]==cmd).all() else 3 if (vec_cmds[1] == cmd).all() else 4 if (vec_cmds[2] == cmd).all() else 5
+    
+
+   
+    agt.model.weights
+    print(agt.get_action(sample[0], sample[1], cmd))
+
+    print("preicted action")
+    print(action)
+    steers += [()]
+
+agt.train()
 agt._show_graph([history(), history(), history()], "accuracy")
 agt.train()
 h = agt.model.fit(Generator(data, 12), validation_data=Generator(data, 12), batch_size=12, epochs=10, callbacks=[agt.early_stopping, agt.checkpoint])

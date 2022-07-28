@@ -130,6 +130,7 @@ from keras.optimizers import Adam
     #print(y)
 MAX_BRANCH_BUFFER_SIZE = 53760
 def show_accuracy_graph(histories):
+    
     accumulated_accuracies = [point for history in histories for point in history.history["mse"]]
     accumulated_val_accuracies = [point for history in histories for point in history.history["val_mse"]]
     plt.plot(accumulated_accuracies)
@@ -149,6 +150,8 @@ import sys
 from keras.utils import Sequence
 sys.path.insert(0, r"C:\Users\autpucv\Downloads\CARLA_0.8.2\PythonClient\carla\agent")
 from agent import Agent
+
+
 class Generator(Sequence):
     # Class is a dataset wrapper for better training performance
     def __init__(self, dataset, batch_size=120):
@@ -195,19 +198,23 @@ class agent(Agent):
 
         self.train_samples = [[],[],[]]
         self.debug = debug
-        self.val_data = load_data_2(False, debug)#self.get_samples(valFiles, n_val_samples, dict())
+        self.val_data = load_data(False, debug)#self.get_samples(valFiles, n_val_samples, dict())
+        
         if train_initial_policy:
-            self.train_samples = load_data_2()
+            self.train_samples = load_data_2(debug=debug)
         
          
             # self.train_images = [np.random.uniform(0, 255, (88, 200, 3)) for i in range(500)]
             # self.train_actions = [[0, 0.5, 0] for i in range(500)]
             # self.train_cmds = ["straight" for i in range(500)]
             # self.train_speeds = [30 for i in range(500)]
-        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+        
+        #self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + "val_loss-{val_loss:.2f}-2.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+
         self.early_stopping = EarlyStopping(monitor ="val_loss",
                                         restore_best_weights = True,
-                                        mode ="auto", patience = 3)
+                                        mode ="auto", patience = 5)
         self.augmenter = image_augmenter()                            
         self.model = self.create_model()
         print("loading weights...")
@@ -215,11 +222,12 @@ class agent(Agent):
         self.try_load_weights()
         self.ith_iteration = 0
         opt = Adam(lr=1e-4)
+        
         #large errors are heavily penalised with the mean squared error
         self.model.compile(loss='mean_squared_error', optimizer=opt, 
 metrics=['mse', 'accuracy'])
         self.split = math.ceil(MAX_REPLAY_BUFFER_SIZE * 0.2)
-
+        self.mse_records = []
     def dump(self, filename):
         with open(filename, 'wb') as f:
             pickle.dump([self.train_images,
@@ -316,14 +324,15 @@ metrics=['mse', 'accuracy'])
                 self.test_actions += [act for act in normalised_actions]
                 self.test_speeds += [spd for spd in normalised_speeds]
     def try_load_weights(self):
-
+        
         files = os.listdir(CHECKPT_FOLDER_DIR)
         checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights.best.testing.225epochs.patience3.batch_size180.validation0.33_1.hdf5")
         if len(files) == 0:
             print("no checkpoints saved!")
         else:
             print(f"found checkpoint : {files[0]}")
-            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights_with_augmentation_angles_corrected.hdf5")
+            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=True-2.hdf5")
+            #checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False.hdf5")
 
             self.model.load_weights(checkpt)
         
@@ -367,9 +376,12 @@ metrics=['mse', 'accuracy'])
         if len(self.train_samples[cmd - 2]) == MAX_REPLAY_BUFFER_SIZE // 3:
             
             self.train_samples[cmd - 2].remove(self.train_samples[cmd -2][0])
-        image, speed, n_cmd = self.normalise_single_sample(image, speed, cmd)
+        vec_commands = np.eye(4).astype('uint8')
+        speed /= TARGET_SPEED
+        cmd_index= cmd
+        cmd = vec_commands[cmd-2]
 
-        self._add_to_buffer(image, speed, n_cmd, action, cmd)
+        self._add_to_buffer(image, speed, cmd, action, cmd_index)
     
     
 
@@ -445,21 +457,24 @@ metrics=['mse', 'accuracy'])
         return ([images, np.array(speeds)/TARGET_SPEED, np.array(commands)], np.array(actions))
     @property
     def BATCH_SIZE(self): return 9 if self.debug else 120
+
     def train(self):
         # num_samples = round(TRAIN_BATCH_SIZE / 3)
         # train_data = load_data()
       
        
         #samples = self.get_samples(trainFiles, n_train_samples, dict())
-    
-        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), epochs=10, shuffle=True, callbacks=[self.checkpoint, self.early_stopping], validation_data=Generator(self.val_data, self.BATCH_SIZE))
+        
+        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), epochs=10, shuffle=True, callbacks=[self.checkpoint], validation_data=([np.array(data) for data in self.val_data[:3]], np.array(self.val_data[3])))
         self.histories.append(history)
+
         if self.model.stop_training:
             print(f"stoped at {self.ith_iteration} th iteration")
             print(f"\n at {self.early_stopping.stopped_epoch} th epoch")
-            
-            return True
+            #reset the early stopping tool
         
+            return True
+
         self.ith_iteration += 1
         
         # history = self.model.fit_generator(self.batch_generator(False, n_train_samples), steps_per_epoch=n_train_samples / 120,
@@ -469,8 +484,10 @@ metrics=['mse', 'accuracy'])
         
         #self.model.fit(x=train_samples[0], y=train_samples[1], batch_size=120, shuffle=True, validation_data=val_samples, epochs=50, callbacks=[self.early_stopping])
         return False       
-
+        
     def _show_graph(self, histories, name):
+        plt.savefig(name + '.png')
+
         plt.title('model ' + name)
         # show val metric and metric over epochs
         for i, history in enumerate(histories):
@@ -484,15 +501,16 @@ metrics=['mse', 'accuracy'])
         plt.xlabel('epoch')
         plt.legend([f'train{i//2}' if i % 2 == 0 else f"val{(i - 1)//2}" for i in range(10)], loc='upper left')
         
-    def show_graph(self):
+    def show_graph(self, save_to_disk = True):
         self._show_graph(self.histories, 'accuracy')
         plt.figure()
         # self._show_graph(self.histories, 'loss')
         # plt.figure()
         self._show_graph(self.histories, 'mse')
         plt.show()
+    
     def normalise_single_sample(self, image, speed, cmd, grayscale= False):
-       
+        image = image.astype('float32') / 255
         vec_commands = np.eye(4).astype('uint8')
         speed /= TARGET_SPEED
 
@@ -527,7 +545,7 @@ metrics=['mse', 'accuracy'])
         cmd = np.reshape(cmd, (1,4))
        
         s,t,b= self.model.predict([image, speed, cmd], 1, verbose='0')[0]
-        return (s.item(), t.item(), b.item())
+        return (np.clip(s.item(), -1, 1), np.clip(t.item(), 0, 1), np.clip(b.item(), 0, 1))
 
     def run_step(self, measurements, sensor_data, directions, target):
 
