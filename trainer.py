@@ -18,10 +18,10 @@ class imitation_learning_trainer:
         self.agent_steers = [] 
         self.counters = [0,0,0]
         self.debug = debug
-        self.env = CarEnv(self.counters, training=True, port=2000)
+        self.env = CarEnv(self.counters, training=True, port=2008)
         #self.expert = Expert(self.env)
         self.agent = agent(debug)
-        
+    
     def DR(self, observation, iter, beta):
         ob, spd, cmd = observation 
 
@@ -29,21 +29,21 @@ class imitation_learning_trainer:
         self.env.w.debug.draw_string(self.env.get_current_location(), f"{round(s, 2)}", life_time=0.1)
 
    
-        if (beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated()):
+        if False and (beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated()):
             #print("switching to expert control")
             return self.expert.get_action()
         else:
             #print("switching to agent control")
             s,t,b=self.agent.get_action(ob[0], spd, cmd)
-            if s > 0 and (cmd == 3 or cmd == 4):
+            # if s > 0 and (cmd == 3 or cmd == 4):
         
-                s += 0.1
-            #s += 0.1 * (s / abs(s))
-            elif s < 0 and (cmd == 3 or cmd == 4):
-                s -= 0.1
-            #s += 0.1 * (s / abs(s))
-            if cmd == 3 and s > 0 or cmd == 4 and s < 0:
-                s *= -1
+            #     s += 0.1
+            # #s += 0.1 * (s / abs(s))
+            # elif s < 0 and (cmd == 3 or cmd == 4):
+            #     s -= 0.1
+            # #s += 0.1 * (s / abs(s))
+            # if cmd == 3 and s > 0 or cmd == 4 and s < 0:
+            #     s *= -1
             if b <= 0.1:
                 b = 0
             return carla.VehicleControl(steer=s, throttle=t, brake=b)
@@ -73,6 +73,7 @@ class imitation_learning_trainer:
             self.agent.insert_input(imgs[1], speed, cmd, left_bias_action)
             self.agent.insert_input(imgs[2], speed, cmd, right_bias_action)
         else:
+            
             self.counters[cmd - 2] += 1
     
     def translate_action_to_control(self, action):
@@ -158,12 +159,12 @@ class imitation_learning_trainer:
             #agent_control = self.translate_action_to_control(action)
             expert_action = self.expert.get_action()
             print(f"orientation {self.env.orientation_wrt_road}")
+            
             ob, done = self.env.run_step(drive_action)
             #in case a collision occurred or something reset
             if done:
                 self.env.reset()
                 self.expert = Expert(self.env)
-            
                 continue
             expert_action = [expert_action.steer, expert_action.throttle, expert_action.brake]
             if self.env.target_updated:
@@ -198,5 +199,5 @@ class imitation_learning_trainer:
         #self.show_statistics()
         
 
-trainer = imitation_learning_trainer()
+trainer = imitation_learning_trainer(True)
 trainer.main_loop()

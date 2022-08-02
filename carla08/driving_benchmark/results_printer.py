@@ -13,7 +13,7 @@ def print_summary(metrics_summary, weathers, path):
 
     # Improve readability by adding a weather dictionary
     weather_name_dict = {1: 'Clear Noon', 3: 'After Rain Noon',
-                         6: 'Heavy Rain Noon', 8: 'Clear Sunset',
+                         6: 'Heavy Rain Noon', 8: 'Clear Sunset',  10: 'rainy after rain',
                          4: 'Cloudy After Rain', 14: 'Soft Rain Sunset'}
 
     # First we write the entire dictionary on the benchmark folder.
@@ -24,7 +24,9 @@ def print_summary(metrics_summary, weathers, path):
 
     metrics_to_average = [
         'episodes_fully_completed',
-        'episodes_completion'
+        'episodes_completion',
+        'percentage_off_road',
+        'percentage_green_lights'
 
     ]
     # We compute the number  of episodes based on size of average completion
@@ -34,11 +36,16 @@ def print_summary(metrics_summary, weathers, path):
 
         if metric == 'episodes_completion':
             print ("Average Percentage of Distance to Goal Travelled ")
+        elif metric == 'percentage_off_road':
+            print("Average Percentage of Distance to Percentage OffRoad")
+        elif metric == 'percentage_green_lights':
+            print("Average Percentage of Distance to Percentage Green Lights")
         else:
             print ("Percentage of Successful Episodes")
 
         print ("")
         values = metrics_summary[metric]
+        print( " VALUES ")
 
         metric_sum_values = np.zeros(number_of_episodes)
         for weather, tasks in values.items():

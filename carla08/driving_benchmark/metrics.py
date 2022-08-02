@@ -190,6 +190,44 @@ class Metrics(object):
 
         return count_lane_intersect, count_sidewalk_intersect
 
+
+    def _get_percentage_out_road(self, selected_matrix, header):
+
+        """
+            Check for the situations were the agent goes out of the road.
+        Args:
+            selected_matrix: The matrix with all the experiments summary
+            header: The header , to know the positions of details
+        """
+
+        # Variable to count the time it is outside
+        count_outside = 0
+
+        i = 0
+
+        # IF there is more than 50 consecutive frames... we say that the car got
+        # Stuck outside the road, counting this destroy the average
+        consecutive_frames = 0
+
+        while i < selected_matrix.shape[0]:
+
+            if (selected_matrix[i, header.index('intersection_offroad')]) \
+                    > self._parameters['intersection_offroad']['threshold'] or \
+                selected_matrix[i, header.index('intersection_otherlane')] \
+                    > self._parameters['intersection_otherlane']['threshold']:
+
+                if consecutive_frames < 50:
+                    count_outside += 1
+
+                consecutive_frames += 1
+            else:
+                consecutive_frames = 0
+            i += 1
+
+
+        return float(count_outside)/float(selected_matrix.shape[0])
+
+
     def compute(self, path):
 
         """
@@ -253,6 +291,16 @@ class Metrics(object):
                                                      all_weathers},
                               'collision_other': {w: [[] for i in range(len(tasks))] for w in
                                                   all_weathers},
+                              'percentage_off_road': {w: [[] for i in range(len(tasks))] for w in
+                                                         all_weathers},
+                              'percentage_green_lights': {w: [0] * len(tasks) for w in
+                                                             all_weathers},
+                              'end_pedestrian_collision': {w: [0] * len(tasks) for w in
+                                                           all_weathers},
+                              'end_vehicle_collision': {w: [0] * len(tasks) for w in
+                                                           all_weathers},
+                              'end_other_collision': {w: [0] * len(tasks) for w in
+                                                           all_weathers},
                               'episodes_fully_completed': {w: [0] * len(tasks) for w in
                                                            all_weathers},
                               'average_speed': {w: [0] * len(tasks) for w in all_weathers},
@@ -277,8 +325,25 @@ class Metrics(object):
                                    measurements_matrix[:, header_metrics.index('weather')] == float(
                                        w))]
 
+                metrics_dictionary['end_pedestrian_collision'][w][t] = \
+                    experiment_results_matrix[:, header.index('end_pedestrian_collision')].tolist()
+
+                metrics_dictionary['end_vehicle_collision'][w][t] = \
+                    experiment_results_matrix[:, header.index('end_vehicle_collision')].tolist()
+
+                metrics_dictionary['end_other_collision'][w][t] = \
+                    experiment_results_matrix[:, header.index('end_other_collision')].tolist()
+
+                metrics_dictionary['percentage_green_lights'][w][t] = np.nan_to_num((
+                    experiment_results_matrix[:, header.index('number_green_lights')]/
+                (experiment_results_matrix[:, header.index('number_green_lights')] +
+                    experiment_results_matrix[:, header.index('number_red_lights')]))).tolist()
+
+
+
                 metrics_dictionary['episodes_fully_completed'][w][t] = \
                     experiment_results_matrix[:, header.index('result')].tolist()
+
 
                 metrics_dictionary['episodes_completion'][w][t] = \
                     ((experiment_results_matrix[:, header.index('initial_distance')]
@@ -310,6 +375,11 @@ class Metrics(object):
                         w][t].append(lane_road[0])
                     metrics_dictionary['intersection_offroad'][
                         w][t].append(lane_road[1])
+
+                    metrics_dictionary['percentage_off_road'][
+                        w][t].append(self._get_percentage_out_road(
+                        episode_experiment_metrics, header_metrics))
+
 
                     if tasks[t] in set(self._parameters['dynamic_tasks']):
 

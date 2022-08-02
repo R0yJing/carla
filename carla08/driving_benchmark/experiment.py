@@ -4,7 +4,7 @@
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
 
-from carla.settings import CarlaSettings
+from ..settings import CarlaSettings
 
 
 class Experiment(object):
@@ -23,6 +23,7 @@ class Experiment(object):
 
     def __init__(self):
         self.Task = 0
+        self.TaskName = ''
         self.Conditions = CarlaSettings()
         self.Poses = [[]]
         self.Repetitions = 1
@@ -33,12 +34,14 @@ class Experiment(object):
                 raise ValueError('Experiment: no key named %r' % key)
             setattr(self, key, value)
 
-        if self.Repetitions != 1:
-            raise NotImplementedError()
+
 
     @property
     def task(self):
         return self.Task
+    @property
+    def task_name(self):
+        return self.TaskName
 
     @property
     def conditions(self):

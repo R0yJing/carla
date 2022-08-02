@@ -331,7 +331,7 @@ metrics=['mse', 'accuracy'])
             print("no checkpoints saved!")
         else:
             print(f"found checkpoint : {files[0]}")
-            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=True-2.hdf5")
+            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.12-2.hdf5")
             #checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False.hdf5")
 
             self.model.load_weights(checkpt)
