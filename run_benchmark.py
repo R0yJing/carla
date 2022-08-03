@@ -15,14 +15,15 @@ def main():
     collided = False
 
     total_num_episodes = BENCHMARK_LIMIT * 3
-    
-    for i in range( total_num_episodes):
+    import time
+    for i in range( 100):
 
         ((ob_front, _, _), _, _), done = env.reset()
 
         if env.has_collected_enough_turn_samples():
             env.preferred_direction = 2
-        while True:
+        st = time.time()
+        while time.time() - st < 30:
             print(counters)
             s,t,b = trained_agt.get_action(ob_front, env.get_speed(), env.current_direction)
             if b > 0.1:
