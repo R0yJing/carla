@@ -7,3 +7,5 @@ experiments.py
 *.png
 *.json
 checkpoints/
+coil_agent/model/
+*.pth

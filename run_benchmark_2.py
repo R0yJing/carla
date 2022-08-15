@@ -8,6 +8,7 @@ import sys
 sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
 from coiltraine_agent import *
 
+
 #from neural_net_v2 import agent
 def infraction_occured(env : CarEnv):
     print(env.distance_from_lane_edge)
@@ -28,7 +29,7 @@ def main():
     #baseline_agt = agent(True)
     baseline_agt = Agent()
     total_dist_travelled = 0
-    dist_per_episode = 1000
+    dist_per_episode = 50
     counters = [0,0,0]
     traffic_light_counter = [0]
     debug = True
@@ -66,9 +67,16 @@ def main():
         env.run_step(carla.VehicleControl(steer=s,throttle=t, brake=b))
         infract_end_wp = None
         added_missed_turn = False
-        while counters[current_idx] < b_lim():
+        infract_registered = False
+        collided = False
+        added_to_acc_dist = False
+        acc_dist_from_last_infraction = 0
+        total_dist_travelled = 0
+        print("#######################")
+        print(f"episode {i}")
+        while True:
             
-           
+            print 
             s,t,b = baseline_agt.get_action(ob_front, env.get_speed(), env.current_direction)
             # if t > b:
             #     b = 0
@@ -76,31 +84,41 @@ def main():
             #     b = 0
             control = carla.VehicleControl(steer=s,throttle=t, brake=b)
             
-            if infraction_occured(env) and not infract_registered:
-            
-                infract_registered = True
+            if (infraction_occured(env) and not infract_registered) or env.collision_timer is not None and not collided:
+                
+               
+                if env.collision_timer is None and not collided:
+                    collided = True
+                    num_collisions += 1
+                if infraction_occured(env) and not infract_registered:
+                    infract_registered = True
+                    if env.current_direction == 3 or env.current_direction == 4:
+                        turn_infractions += 1
+                    else:
+                        follow_infractions += 1
                 acc_dist_from_last_infraction += env.get_dist_from_source_wp()
                 dist_between_infractions.append(acc_dist_from_last_infraction)
                 acc_dist_from_last_infraction = 0
-                if env.current_direction == 3 or env.current_direction == 4:
-                    turn_infractions += 1
-                else:
-                    follow_infractions += 1
-            elif infract_registered and not infraction_occured(env):
-                infract_end_wp = env.current_wp
-                infract_registered = False
-        
+                
+            elif infract_registered or collided:
+                
+                if collided:
+                    if not env.collision_timer is None:
+                        collided = False
+                if not infraction_occured(env):
+                        
+                    infract_end_wp = env.current_wp
+                    infract_registered = False
+            #reached intermediate waypoint
             if env.reached_dest() and not done and not added_to_acc_dist:
-                if i == 2:
+               
                     #prefer turns instead of straight
-                    env.preferred_direction = random.choice([3, 4])
+                env.preferred_direction = random.choice([3, 4])
                 total_dist_travelled += env.get_dist_between_src_dest()
-                if total_dist_travelled >= dist_per_episode:
-                    done = True
-
+               
                 added_to_acc_dist = True
                 print("reached destination")
-                if env.on_lane:
+                if not infraction_occured(env) and not collided:
                     if infract_end_wp is not None:
                         acc_dist_from_last_infraction += env.dist_between_transform(infract_end_wp.transform, env.target_wp.transform)
                     else:
@@ -110,22 +128,22 @@ def main():
             if env.missed_turn() and not added_missed_turn:
                 
                 print("missed a turn")
-                print(env.angle)
+
                 missed_turns += 1
                 added_missed_turn = True
+        
             elif not env.missed_turn() and added_missed_turn:
-                added_missed_turn = False        
-            ((ob_front, _, _), _, _), done = env.run_step(control)
-            
-            if not done and not collided and env.collision_timer is not None:
-                    collided = True
-                    num_collisions += 1
-                    print("collision detected")
+                added_missed_turn = False     
+
+
 
                 #recovered form collision
             #timer will be reset to none only when collision timeout is exceeded
-            elif collided and done:
-                collided = False
+          
+        
+            ((ob_front, _, _), _, _), done = env.run_step(control)
+            
+            
             if done:
                 # if not env.has_collected_enough_turn_samples():
                 #     if not env.turn_made():
@@ -135,13 +153,10 @@ def main():
                 
                 if total_dist_travelled < dist_per_episode:
                     num_failures += 1
-                env.reset()
+                
                 #######################
-                infract_registered = False
-                added_to_acc_dist = False
-                acc_dist_from_last_infraction = 0
-                added_missed_turn = False
-            
+                
+                break
 
                 
 

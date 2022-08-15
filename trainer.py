@@ -13,12 +13,13 @@ class imitation_learning_trainer:
         #disable the timeout when trainingself.left_turns_counter = 0
         self.right_turns_counter = 0
         self.follow_lane_counter = 0
+        self.num_obs_at_traffic_light_counter = [0]
         self.status_timer = time.time()
         self.expert_steers = []
         self.agent_steers = [] 
         self.counters = [0,0,0]
         self.debug = debug
-        self.env = CarEnv(self.counters, training=True, port=2008)
+        self.env = CarEnv(self.counters, self.num_obs_at_traffic_light_counter, training=True, port=2000, debugg=True)
         #self.expert = Expert(self.env)
         self.agent = agent(debug)
     
@@ -26,10 +27,9 @@ class imitation_learning_trainer:
         ob, spd, cmd = observation 
 
         s,t,_=self.agent.get_action(ob[0], spd, cmd)
-        self.env.w.debug.draw_string(self.env.get_current_location(), f"{round(s, 2)}", life_time=0.1)
+        
 
-   
-        if False and (beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated()):
+        if True or (beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated()):
             #print("switching to expert control")
             return self.expert.get_action()
         else:
@@ -57,23 +57,41 @@ class imitation_learning_trainer:
     #         self. follow_lane_counter = 0
     #         return True
     #     return False
+    
+    @property
+    def NUM_SAMPLES_PER_COMMAND_PER_ITER(self):
+        return NUM_SAMPLES_PER_COMMAND_PER_ITER if not self.debug else DEBUG_NUM_SAMPLES_PER_COMMAND_PER_ITER
     def try_add_sample(self, obs, action):
         imgs, speed, cmd = obs
 
-        if self.counters[cmd - 2] >= NUM_SAMPLES_PER_COMMAND_PER_ITER:
+        # if cmd == 2:
+        #     #getting too many non traffic light samples
+        #     if self.counters[0] - self.num_obs_at_traffic_light_counter[0] > math.floor(NUM_SAMPLES_PER_COMMAND_PER_ITER * 0.5):
+        #         return
+        if self.counters[cmd - 2] >= self.NUM_SAMPLES_PER_COMMAND_PER_ITER:
             return 
+        #in the worst case scenario, nums at traffic light = 0 therefore this is an upper bound
+        # elif sum(self.counters) - self.num_obs_at_traffic_light_counter[0] > math.ceil(NUM_SAMPLES_PER_COMMAND_PER_ITER * 2.5):
+        #     return 
         left_bias_steer = augment_steering(-45, action[0], speed)
         right_bias_steer = augment_steering(45, action[0], speed)
         left_bias_action = [left_bias_steer] + action[1:]
         right_bias_action = [right_bias_steer] + action[1:]
         self.agent.insert_input(imgs[0], speed, cmd, action)
-        if not (self.env.autocar.is_at_traffic_light() and self.env.autocar.get_traffic_light().state == carla.TrafficLightState.Red): 
+        if not (self.env.waiting_for_light()): 
+        
             self.counters[cmd - 2] += 3
             #might not see the traffic light so theres no reason to stop
             self.agent.insert_input(imgs[1], speed, cmd, left_bias_action)
             self.agent.insert_input(imgs[2], speed, cmd, right_bias_action)
+            if self.env.autocar.get_traffic_light() != None:
+                self.env.traffic_light_counter[0] += 3
+            #green or amber light
+        
         else:
-            
+
+            print("adding red light samples")
+            self.num_obs_at_traffic_light_counter[0] += 1
             self.counters[cmd - 2] += 1
     
     def translate_action_to_control(self, action):
@@ -114,7 +132,12 @@ class imitation_learning_trainer:
         plt.legend(['expert', 'agent'], loc='upper left')
         plt.show()
     def collected_enough_samples(self):
-        return sum(self.counters) >= NUM_SAMPLES_PER_ITER
+        return False
+        return all([samples >= self.NUM_SAMPLES_PER_COMMAND_PER_ITER for samples in self.counters])
+    @property
+
+    def SAMPLE_TIME(self):
+        return 0 if self.debug else SAMPLE_TIME
 
     def reset_counters(self):
         for i in range(len(self.counters)):
@@ -131,6 +154,7 @@ class imitation_learning_trainer:
         self.reset_counters()
         #next target already set
         self.expert = Expert(self.env)
+        
         #done in this case means we are still collecting turn samples
         if not done:
             self.expert.update_target()
@@ -158,9 +182,12 @@ class imitation_learning_trainer:
             #     pass
             #agent_control = self.translate_action_to_control(action)
             expert_action = self.expert.get_action()
-            print(f"orientation {self.env.orientation_wrt_road}")
-            
+            #print(f"orientation {self.env.orientation_wrt_road}")
+            # print(self.counters)
+            # print(self.num_obs_at_traffic_light_counter)
+            self.env.set_guideline_control(expert_action)
             ob, done = self.env.run_step(drive_action)
+            
             #in case a collision occurred or something reset
             if done:
                 self.env.reset()
@@ -173,11 +200,11 @@ class imitation_learning_trainer:
                 self.expert.update_target()
                 self.env.target_updated = False 
         
-            if time.time() - self.start_time > SAMPLE_TIME: 
+            if time.time() - self.start_time > self.SAMPLE_TIME: 
                 dirs = ["follow lane", "left", "right"]
                 #self.env.w.debug.draw_string(self.env.get_current_location(), f"{dirs[self.env.current_direction - 2]}" if self.env.current_direction is not None else "undefined", life_time=SAMPLE_TIME)
                 if self.env.sensor_active:
-                    print(f"adding {self.env.current_direction} sample")
+                    #print(f"adding {self.env.current_direction} sample")
                     
                     self.try_add_sample(ob, expert_action)
 
@@ -189,15 +216,14 @@ class imitation_learning_trainer:
         self.start_time = time.time()
         i = 0
         stopped = False
-        while i < N_ITER:
+        while i < 2:
             print(f"iteration {i}")
             self.sample_and_relabel_trajectory(i)
             self.agent.train()
-
             i += 1
         self.agent.show_graph()
         #self.show_statistics()
         
 
-trainer = imitation_learning_trainer(True)
+trainer = imitation_learning_trainer(debug=True)
 trainer.main_loop()

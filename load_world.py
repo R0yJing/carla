@@ -4,7 +4,7 @@ import argparse
 import subprocess
 parser = argparse.ArgumentParser()
 parser.add_argument("--port", help="choose port", default=2000)
-parser.add_argument("--town", default="Town01_Opt")
+parser.add_argument("--town", default="Town01")
 args = parser.parse_args()
 #stdout, stderr = p.communicate()
 print(args.port)

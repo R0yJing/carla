@@ -1,8 +1,7 @@
 
 
 from matplotlib import pyplot as plt
-from pyrsistent import s 
-from constants import BATCH_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
+from constants import BATCH_SIZE, DEBUG_MAX_REPLAY_BUFFER_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
 import h5py
 from collections import deque 
 from random import sample, shuffle
@@ -80,6 +79,7 @@ class image_module:
         length = np.array(temp.shape.as_list()[1:])
         length = np.prod(length)
         temp = Reshape((length,))(temp)
+        print(temp.shape.as_list())
         # temp = Flatten()(temp)
         temp = add_fc_block(temp, 512, "image_module_fc_l9")
         self.image_model_out = add_fc_block(temp, 512, "image_module_fc_l10")
@@ -210,7 +210,7 @@ class agent(Agent):
             # self.train_speeds = [30 for i in range(500)]
         
         #self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
-        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + "val_loss-{val_loss:.2f}-2.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + ("val_loss-{val_loss:.2f}-3.hdf5" if not self.debug else "debug.hdf5")), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
 
         self.early_stopping = EarlyStopping(monitor ="val_loss",
                                         restore_best_weights = True,
@@ -259,74 +259,55 @@ metrics=['mse', 'accuracy'])
    
     
     
-    def batch_generator(self, is_validation, upperlim, num_data_loads=2):
-        filenames = glob.glob('dataset\SeqVal\*.h5' if is_validation else 'dataset\SeqTrain\*.h5')
-        train_searched_indices = dict()
-        num_samples_per_load = upperlim / num_data_loads
-        ct = 0
-        #the generator function does not reset after an epoch
-        while True:
-            print("epoch>>>>>>>>>>>..."+str(ct))
-            ct+=1
-            # if (len(self.cache['images']) != 0 and not is_validation) or (len(self.val_cache['images']) != 0 and is_validation):
-            #     print('cache')
+    # def batch_generator(self, is_validation, upperlim, num_data_loads=2):
+    #     filenames = glob.glob('dataset\SeqVal\*.h5' if is_validation else 'dataset\SeqTrain\*.h5')
+    #     train_searched_indices = dict()
+    #     num_samples_per_load = upperlim / num_data_loads
+    #     ct = 0
+    #     #the generator function does not reset after an epoch
+    #     while True:
+    #         print("epoch>>>>>>>>>>>..."+str(ct))
+    #         ct+=1
+    #         # if (len(self.cache['images']) != 0 and not is_validation) or (len(self.val_cache['images']) != 0 and is_validation):
+    #         #     print('cache')
 
-            #     cache = self.val_cache if is_validation else self.cache
-            #     random_indices = [i for i in range(upperlim)]
-            #     random.shuffle(random_indices)
+    #         #     cache = self.val_cache if is_validation else self.cache
+    #         #     random_indices = [i for i in range(upperlim)]
+    #         #     random.shuffle(random_indices)
                 
-            #     for i in range(0, upperlim, 120):
-            #         yield ([self.augmenter.aug(np.array(cache['images'][i:i+120]))/255, np.array(cache['speeds'][i:i+120]), np.array(cache['commands'][i:i+120])], np.array(cache['actions'][i:i+120]))
+    #         #     for i in range(0, upperlim, 120):
+    #         #         yield ([self.augmenter.aug(np.array(cache['images'][i:i+120]))/255, np.array(cache['speeds'][i:i+120]), np.array(cache['commands'][i:i+120])], np.array(cache['actions'][i:i+120]))
                 
-            # else:
-            print("no cache")
-            for i in range(2):
-                samples = self.get_samples(filenames, num_samples_per_load, train_searched_indices)
-                random.shuffle(samples)
-                for i in range(0, len(samples), 120):
+    #         # else:
+    #         print("no cache")
+    #         for i in range(2):
+    #             samples = self.get_samples(filenames, num_samples_per_load, train_searched_indices)
+    #             random.shuffle(samples)
+    #             for i in range(0, len(samples), 120):
                 
-                    batch = samples[i:i+120]
-                    imgs = [sample[0] for sample in batch]
-                    spds = [sample[1] for sample in batch]
-                    cmds = [sample[2] for sample in batch]
-                    actions = [sample[3] for sample in batch]
-                    augmented_imgs = self.augmenter.aug(np.array(imgs))/255
-                    spds = np.array(spds) / TARGET_SPEED
-                    cmds = np.array(cmds)
-                    actions = np.array(actions)
-                    data_tuple = ([augmented_imgs, spds, cmds], actions)
+    #                 batch = samples[i:i+120]
+    #                 imgs = [sample[0] for sample in batch]
+    #                 spds = [sample[1] for sample in batch]
+    #                 cmds = [sample[2] for sample in batch]
+    #                 actions = [sample[3] for sample in batch]
+    #                 augmented_imgs = self.augmenter.aug(np.array(imgs))/255
+    #                 spds = np.array(spds) / TARGET_SPEED
+    #                 cmds = np.array(cmds)
+    #                 actions = np.array(actions)
+    #                 data_tuple = ([augmented_imgs, spds, cmds], actions)
                     
-                    #self.add_to_cache(([imgs, spds, cmds], actions), is_validation)
-                    yield data_tuple
-    def add_to_cache(self, data_tuple, is_validation):
-        cache = self.val_cache if is_validation else self.cache
-        cache['images'] += [sample for sample in data_tuple[0][0]]
-        cache['speeds'] += [sample for sample in data_tuple[0][1]]
-        cache['commands'] += [sample for sample in data_tuple[0][2]]
-        cache['actions'] += [sample for sample in data_tuple[1]]
-    def load_data(self,filename, training=True):
-
-        with open(filename, 'rb') as f:
-            from pympler.asizeof import asizeof
-            print(asizeof(f))
-            d = pickle.load(f)
-            
-            normalised_imgs, normalised_speeds, normalised_cmds = self.normalise_samples(d[0], d[1], d[2])
-            normalised_actions = np.array(d[3])
-            if training:
-                self.train_images += [img for img in normalised_imgs]
-                self.train_cmds += [spd for spd in normalised_cmds]
-                self.train_actions += [act for act in normalised_actions]
-                self.train_speeds += [spd for spd in normalised_speeds]
-            else:
-                self.test_images += [img for img in normalised_imgs]
-                self.test_cmds += [spd for spd in normalised_cmds]
-                self.test_actions += [act for act in normalised_actions]
-                self.test_speeds += [spd for spd in normalised_speeds]
+    #                 #self.add_to_cache(([imgs, spds, cmds], actions), is_validation)
+    #                 yield data_tuple
+    # def add_to_cache(self, data_tuple, is_validation):
+    #     cache = self.val_cache if is_validation else self.cache
+    #     cache['images'] += [sample for sample in data_tuple[0][0]]
+    #     cache['speeds'] += [sample for sample in data_tuple[0][1]]
+    #     cache['commands'] += [sample for sample in data_tuple[0][2]]
+    #     cache['actions'] += [sample for sample in data_tuple[1]]
+    
     def try_load_weights(self):
         
         files = os.listdir(CHECKPT_FOLDER_DIR)
-        checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights.best.testing.225epochs.patience3.batch_size180.validation0.33_1.hdf5")
         if len(files) == 0:
             print("no checkpoints saved!")
         else:
@@ -335,7 +316,7 @@ metrics=['mse', 'accuracy'])
             #checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False.hdf5")
 
             self.model.load_weights(checkpt)
-        
+            print("load weights successful!")
     
     def create_model(self):
         spd_module = mlp(1, "speed")
@@ -371,9 +352,12 @@ metrics=['mse', 'accuracy'])
         # self.train_cmds[cmd - 2]  =self.train_cmds[n_truncations :] + cmd
         # self.train_actions[cmd - 2] =self.train_actions[n_truncations :] + action
     
+    @property
+    def MAX_REPLAY_BUFFER_SIZE(self):
+        return MAX_REPLAY_BUFFER_SIZE if not self.debug else DEBUG_MAX_REPLAY_BUFFER_SIZE
 
     def insert_input(self, image, speed, cmd, action):
-        if len(self.train_samples[cmd - 2]) == MAX_REPLAY_BUFFER_SIZE // 3:
+        if len(self.train_samples[cmd - 2]) == self.MAX_REPLAY_BUFFER_SIZE // 3:
             
             self.train_samples[cmd - 2].remove(self.train_samples[cmd -2][0])
         vec_commands = np.eye(4).astype('uint8')
@@ -458,6 +442,9 @@ metrics=['mse', 'accuracy'])
     @property
     def BATCH_SIZE(self): return 9 if self.debug else 120
 
+    @property
+    def NUM_EPOCHS(self):
+        return 10 if not self.debug else 1
     def train(self):
         # num_samples = round(TRAIN_BATCH_SIZE / 3)
         # train_data = load_data()
@@ -465,7 +452,7 @@ metrics=['mse', 'accuracy'])
        
         #samples = self.get_samples(trainFiles, n_train_samples, dict())
         
-        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), epochs=10, shuffle=True, callbacks=[self.checkpoint], validation_data=([np.array(data) for data in self.val_data[:3]], np.array(self.val_data[3])))
+        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), epochs=self.NUM_EPOCHS, shuffle=True, callbacks=[self.checkpoint], validation_data=([np.array(data) for data in self.val_data[:3]], np.array(self.val_data[3])))
         self.histories.append(history)
 
         if self.model.stop_training:
@@ -486,8 +473,7 @@ metrics=['mse', 'accuracy'])
         return False       
         
     def _show_graph(self, histories, name):
-        plt.savefig(name + '.png')
-
+    
         plt.title('model ' + name)
         # show val metric and metric over epochs
         for i, history in enumerate(histories):
@@ -500,14 +486,15 @@ metrics=['mse', 'accuracy'])
         plt.ylabel(name)
         plt.xlabel('epoch')
         plt.legend([f'train{i//2}' if i % 2 == 0 else f"val{(i - 1)//2}" for i in range(10)], loc='upper left')
-        
+        plt.savefig("saved_graphs\\" + name + '.png')
+        plt.close()
     def show_graph(self, save_to_disk = True):
         self._show_graph(self.histories, 'accuracy')
-        plt.figure()
+        #plt.figure()
         # self._show_graph(self.histories, 'loss')
         # plt.figure()
         self._show_graph(self.histories, 'mse')
-        plt.show()
+        #plt.show()
     
     def normalise_single_sample(self, image, speed, cmd, grayscale= False):
         image = image.astype('float32') / 255
@@ -557,3 +544,4 @@ metrics=['mse', 'accuracy'])
     def get_single_action(self, image,speed, command):
         steer, throttle, brake = self.get_actions([image], [speed], [command])[0]
         return np.clip(steer, -1, 1), np.clip(throttle, 0, 1), np.clip(brake, 0, 1)
+agent(True)
