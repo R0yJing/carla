@@ -19,7 +19,7 @@ class imitation_learning_trainer:
         self.agent_steers = [] 
         self.counters = [0,0,0]
         self.debug = debug
-        self.env = CarEnv(self.counters, self.num_obs_at_traffic_light_counter, training=True, port=2000, debugg=True)
+        self.env = CarEnv(self.counters, self.num_obs_at_traffic_light_counter, training=True, port=2000, debugg=debug)
         #self.expert = Expert(self.env)
         self.agent = agent(debug)
     
@@ -52,6 +52,8 @@ class imitation_learning_trainer:
     def NUM_SAMPLES_PER_COMMAND_PER_ITER(self):
         return NUM_SAMPLES_PER_COMMAND_PER_ITER if not self.debug else DEBUG_NUM_SAMPLES_PER_COMMAND_PER_ITER
     def try_add_sample(self, obs, action):
+        if not self.env.sensor_active:
+            return 
         imgs, speed, cmd = obs
 
         # if cmd == 2:
@@ -96,21 +98,7 @@ class imitation_learning_trainer:
 
         return carla.VehicleControl(throttle=throttle, steer = steer, brake=brake)
 
-    def print_status(self, agent_action, expert_action):
-        if len(self.expert_steers) < 100:
-            self.expert_steers.append(expert_action.steer)
-            self.agent_steers.append(agent_action.steer)
-    
-        expert_action = [expert_action.steer, expert_action.throttle, expert_action.brake]
-    
-        # print("command = " + self.env.current_direction + "\n" + \
-        # "speed = " + str(self.env.get_speed()) + "\n\n" + \
-        # "agent action" + "\n" + \
-        # str([agent_action.steer, agent_action.throttle, agent_action.brake]) + "\n" +
-        # "expert action = \n" + \
-        # str(expert_action) + "\n")
-
-
+   
     def print_steers(self):
         from matplotlib import pyplot as plt
         plt.plot(self.expert_steers)
@@ -122,7 +110,7 @@ class imitation_learning_trainer:
         plt.legend(['expert', 'agent'], loc='upper left')
         plt.show()
     def collected_enough_samples(self):
-        return False
+        
         return all([samples >= self.NUM_SAMPLES_PER_COMMAND_PER_ITER for samples in self.counters])
     @property
 
@@ -133,13 +121,8 @@ class imitation_learning_trainer:
         for i in range(len(self.counters)):
             self.counters[i] = 0
     def sample_and_relabel_trajectory(self, i_iter):
-        
-        # if self.debug:
-        #     rand_img = np.random.uniform(0, 255, (88, 200, 3)).astype('uint8')
-        #     for i in range(3):
-                
-        #         self.try_add_sample(((rand_img, rand_img, rand_img), 10, i + 2), [1,2,3])
-        #     return
+        if i_iter > 0:
+            self.env.autocar.set_autopilot(False, 8000)
         ob, done = self.env.reset()
         self.reset_counters()
         #next target already set
@@ -158,6 +141,7 @@ class imitation_learning_trainer:
             # print(f"orientation {self.env.orientation_wrt_road}")
             # print(f"dist {self.env.abs_distance_from_lane_edge}")
             
+            print(self.counters, self.env.sensor_active)
             preferred_turn = self.counters.index(min(self.counters)) + 2
         
             # if len(self.expert_steers) == 50:
@@ -175,7 +159,7 @@ class imitation_learning_trainer:
             #print(f"orientation {self.env.orientation_wrt_road}")
             # print(self.counters)
             # print(self.num_obs_at_traffic_light_counter)
-            self.env.set_guideline_control(expert_action)
+            #self.env.set_guideline_control(expert_action)
             ob, done = self.env.run_step(drive_action)
             
             #in case a collision occurred or something reset
@@ -193,20 +177,19 @@ class imitation_learning_trainer:
             if time.time() - self.start_time > self.SAMPLE_TIME: 
                 dirs = ["follow lane", "left", "right"]
                 #self.env.w.debug.draw_string(self.env.get_current_location(), f"{dirs[self.env.current_direction - 2]}" if self.env.current_direction is not None else "undefined", life_time=SAMPLE_TIME)
-                if self.env.sensor_active:
-                    #print(f"adding {self.env.current_direction} sample")
-                    
-                    self.try_add_sample(ob, expert_action)
+                self.try_add_sample(ob, expert_action)
 
                 self.start_time = time.time()
-    
+        self.env.teleport()
+
+        self.env.autocar.set_autopilot(True,8000)
     #path is the rollout of the current policy
     def main_loop(self):
         
         self.start_time = time.time()
         i = 0
         stopped = False
-        while i < 2:
+        while i < N_ITER:
             print(f"iteration {i}")
             self.sample_and_relabel_trajectory(i)
             self.agent.train()
@@ -215,5 +198,5 @@ class imitation_learning_trainer:
         #self.show_statistics()
         
 
-trainer = imitation_learning_trainer(debug=True)
+trainer = imitation_learning_trainer(debug=False)
 trainer.main_loop()

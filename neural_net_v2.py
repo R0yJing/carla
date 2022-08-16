@@ -210,7 +210,7 @@ class agent(Agent):
             # self.train_speeds = [30 for i in range(500)]
         
         #self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
-        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + ("val_loss-{val_loss:.2f}-3.hdf5" if not self.debug else "debug.hdf5")), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + ("val_loss-{val_loss:.2f}-3>>>.hdf5" if not self.debug else "debug.hdf5")), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
 
         self.early_stopping = EarlyStopping(monitor ="val_loss",
                                         restore_best_weights = True,
@@ -312,7 +312,7 @@ metrics=['mse', 'accuracy'])
             print("no checkpoints saved!")
         else:
             print(f"found checkpoint : {files[0]}")
-            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.12-2.hdf5")
+            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=True-2.hdf5")
             #checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False.hdf5")
 
             self.model.load_weights(checkpt)
@@ -444,7 +444,7 @@ metrics=['mse', 'accuracy'])
 
     @property
     def NUM_EPOCHS(self):
-        return 10 if not self.debug else 1
+        return 10 if not self.debug else 2
     def train(self):
         # num_samples = round(TRAIN_BATCH_SIZE / 3)
         # train_data = load_data()
@@ -532,7 +532,7 @@ metrics=['mse', 'accuracy'])
         cmd = np.reshape(cmd, (1,4))
        
         s,t,b= self.model.predict([image, speed, cmd], 1, verbose='0')[0]
-            
+
         return (np.clip(s.item(), -1, 1), np.clip(t.item(), 0, 1), np.clip(b.item(), 0, 1))
 
     def run_step(self, measurements, sensor_data, directions, target):

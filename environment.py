@@ -66,6 +66,7 @@ class CarEnv:
         #obstacle_sensor.listen(lambda event  : self.process_obstacle(event))
     def traffic_light_violated(self):
         return self.autocar.is_at_traffic_light() and self.autocar.get_traffic_light().state == carla.TrafficLightState.Red and self.get_speed() > 0
+    
     def get_angle_fwp_wrt_twp(self):
         if len(self.current_wp.next(DIST_BETWEEN_WPS)) == 1:
 
@@ -480,6 +481,7 @@ class CarEnv:
                 print("obstacle detected!")
 
                 self.traffic_jam = True
+                return
         self.traffic_jam = False
     def get_random_start_point_for_turns(self):
         pair = None
@@ -490,7 +492,7 @@ class CarEnv:
         else:
             raise Exception()
         return pair
-    
+    #TODO this functionality is not working properly
     def has_collected_enough_traffic_light_samples(self):
         #half divided between follow lane w/ traffic light and w/o
         return True 
