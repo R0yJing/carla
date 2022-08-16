@@ -25,14 +25,13 @@ def get_current_command_num(env : CarEnv):
     return 0
 def main():
     #baseline_agt =ImitationLearning('Town01', False)
-    #baseline_agt = agent(True)
-    baseline_agt = Agent()
-    total_dist_travelled = 0
-    dist_per_episode = 1000
+    baseline_agt = agent(True)
+    #baseline_agt = Agent()
+
     counters = [0,0,0]
     traffic_light_counter = [0]
-    debug = True
-    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=True)
+    debug = False
+    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=False)
     missed_turns = 0
     num_infractions = 0
     infracted =False 
@@ -40,7 +39,10 @@ def main():
     collided = False
     turn_infractions = 0
     follow_infractions = 0
-    total_num_episodes = 10
+    turn_infract_time = 0
+    follow_infract_time = 0
+    turn_infract_timer = -1
+    follow_infract_timer = -1
     dist_between_infractions = []
     acc_dist_from_last_infraction = 0
     total_num_episodes = b_lim() * 3
@@ -50,24 +52,23 @@ def main():
     start = 0
     reached_dest = False
     added_to_acc_dist = False
-    num_failures = 0
-    for i in range(total_num_episodes):
+    for i in range(3):
         
         ((ob_front, _, _), _, _), done = env.reset()
 
         
         
         current_idx = get_current_command_num(env)
-        
-        env.preferred_direction = random.choice([3, 4])#2 if not env.use_baseline else 5
-        total_turn_timer = time.time() - total_turn_timer
+        if i == 2:
+            env.preferred_direction = 2 if not env.use_baseline else 5
+            total_turn_timer = time.time() - total_turn_timer
         s,t,b = baseline_agt.get_action(ob_front, env.get_speed(), env.current_direction)
         infract_registered = False
         env.run_step(carla.VehicleControl(steer=s,throttle=t, brake=b))
         infract_end_wp = None
         added_missed_turn = False
         while counters[current_idx] < b_lim():
-            
+
            
             s,t,b = baseline_agt.get_action(ob_front, env.get_speed(), env.current_direction)
             # if t > b:
@@ -91,13 +92,6 @@ def main():
                 infract_registered = False
         
             if env.reached_dest() and not done and not added_to_acc_dist:
-                if i == 2:
-                    #prefer turns instead of straight
-                    env.preferred_direction = random.choice([3, 4])
-                total_dist_travelled += env.get_dist_between_src_dest()
-                if total_dist_travelled >= dist_per_episode:
-                    done = True
-
                 added_to_acc_dist = True
                 print("reached destination")
                 if env.on_lane:
@@ -133,8 +127,7 @@ def main():
                 #if missed turn, then timedout
 
                 
-                if total_dist_travelled < dist_per_episode:
-                    num_failures += 1
+                
                 env.reset()
                 #######################
                 infract_registered = False
@@ -150,7 +143,7 @@ def main():
     print(f"collisions {num_collisions / total_num_episodes * 100}% {num_collisions} out of {total_num_episodes}")
     print(f"turn infractions {(turn_infractions)}")
     print(f"straight infractions {(follow_infractions)}")
-    print(f"success rates: {(total_num_episodes - num_failures) / total_num_episodes * 100}%")
+
     print(f"missed turns {missed_turns}")
     print(f"avergae distance between infractions: {sum(dist_between_infractions) / len(dist_between_infractions) * 100}%")
     print(f"total time elapsed: {round(end / 60, 2)} mins")

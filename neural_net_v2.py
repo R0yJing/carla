@@ -532,6 +532,7 @@ metrics=['mse', 'accuracy'])
         cmd = np.reshape(cmd, (1,4))
        
         s,t,b= self.model.predict([image, speed, cmd], 1, verbose='0')[0]
+            
         return (np.clip(s.item(), -1, 1), np.clip(t.item(), 0, 1), np.clip(b.item(), 0, 1))
 
     def run_step(self, measurements, sensor_data, directions, target):

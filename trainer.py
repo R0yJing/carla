@@ -29,23 +29,13 @@ class imitation_learning_trainer:
         s,t,_=self.agent.get_action(ob[0], spd, cmd)
         
 
-        if True or (beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated()):
+        if (beta * LAMBDA**iter >=  random.random() or self.env.traffic_light_violated()):
             #print("switching to expert control")
             return self.expert.get_action()
         else:
             #print("switching to agent control")
             s,t,b=self.agent.get_action(ob[0], spd, cmd)
-            # if s > 0 and (cmd == 3 or cmd == 4):
-        
-            #     s += 0.1
-            # #s += 0.1 * (s / abs(s))
-            # elif s < 0 and (cmd == 3 or cmd == 4):
-            #     s -= 0.1
-            # #s += 0.1 * (s / abs(s))
-            # if cmd == 3 and s > 0 or cmd == 4 and s < 0:
-            #     s *= -1
-            if b <= 0.1:
-                b = 0
+            
             return carla.VehicleControl(steer=s, throttle=t, brake=b)
       #  time.sleep(999)
     # def has_collected_enough_samples_per_episode(self):
