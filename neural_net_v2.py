@@ -210,7 +210,7 @@ class agent(Agent):
             # self.train_speeds = [30 for i in range(500)]
         
         #self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
-        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + ("val_loss-{val_loss:.2f}-3>>>.hdf5" if not self.debug else "debug.hdf5")), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, f"best_weights_train_init_policy={train_initial_policy}-" + ("val_loss-{val_loss:.2f}-3!!!!.hdf5" if not self.debug else "debug.hdf5")), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
 
         self.early_stopping = EarlyStopping(monitor ="val_loss",
                                         restore_best_weights = True,
@@ -311,8 +311,14 @@ metrics=['mse', 'accuracy'])
         if len(files) == 0:
             print("no checkpoints saved!")
         else:
-            print(f"found checkpoint : {files[0]}")
-            checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=True-2.hdf5")
+        
+            chkpt = None
+            if  self.debug:
+                print("loading real weights")
+                checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.21-3!!!!.hdf5")
+            else:
+                print("loaded init policy weights")
+                checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights_with_augmentation_angles_corrected.hdf5")
             #checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False.hdf5")
 
             self.model.load_weights(checkpt)

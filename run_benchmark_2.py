@@ -26,14 +26,14 @@ def get_current_command_num(env : CarEnv):
 
 def main():
     #baseline_agt =ImitationLearning('Town01', False)
-    #baseline_agt = agent(True)
-    baseline_agt = Agent()
+    baseline_agt = agent(debug=True)
+    #baseline_agt = Agent()
     total_dist_travelled = 0
     dist_per_episode = 1000
     counters = [0,0,0]
     traffic_light_counter = [0]
     debug = True
-    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=True, skip_turn_samples= True)
+    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=False, skip_turn_samples= True, port=2000)
     missed_turns = 0
     num_infractions = 0
     infracted =False 
@@ -109,9 +109,9 @@ def main():
                         print("collision end")
                         fv = True
                         collided = False
-                if not infraction_occured(env):
+                if infract_registered and not infraction_occured(env):
                     fv = True
-                    infract_end_wp = env.current_wp
+                    
                     infract_registered = False
                     print("infraction end")
                 no_infrac_wp = env.current_wp
@@ -128,8 +128,7 @@ def main():
                     #     acc_dist_from_last_infraction += env.dist_between_transform(infract_end_wp.transform, env.target_wp.transform)
                     # else:
                 
-                    print(env.get_dist_between_src_dest())
-                    print()
+                    
                     if no_infrac_wp is not None:
                         d = env.dist_between_transform(no_infrac_wp.transform, env.target_wp.transform)
                         acc_dist_from_last_infraction += d

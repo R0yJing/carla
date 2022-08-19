@@ -3,8 +3,8 @@ from environment import CarEnv
 import tensorflow as tf
 import sys
 sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
-from coiltraine_agent import *
-agent = Agent()
+# from coiltraine_agent import *
+# agent = Agent()
 import time
 env = CarEnv([], [], training=False)
 env.reset()

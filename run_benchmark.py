@@ -14,7 +14,7 @@ def infraction_occured(env : CarEnv):
     
     return not env.on_lane
     
-debug = True
+debug = False 
 
 def b_lim():
     return BENCHMARK_LIMIT if not debug else DEBUG_BENCHMARK_LIMIT

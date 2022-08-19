@@ -25,17 +25,16 @@ class Expert:
          
     def set_dest(self, destination):
         self.basic_agent.set_destination(destination)
+        self.target_loc = destination
         #self.agent.set_destination(destination)
     #get recommended action based on observation and cmd
         
-    def reached_waypoint(self):
-        return self.env.get_current_location().distance(self.env.target_loc) < 1
-
+    
     def update_target(self):
         print("target updated")
     
         self.set_dest(self.env.target_loc)
-        self.env.w.debug.draw_string(self.env.target_loc, "TARGET", life_time = 20)
+        self.env.w.debug.draw_string(self.env.target_loc, "expert target")
     def get_action_pid(self) -> carla.VehicleControl:
         wp = self.env.current_target_wp
         return self.agent.run_step(TARGET_SPEED, wp)
