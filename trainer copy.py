@@ -51,7 +51,7 @@ class imitation_learning_trainer:
     
     @property
     def NUM_SAMPLES_PER_COMMAND_PER_ITER(self):
-        return NUM_SAMPLES_PER_COMMAND_PER_ITER if not self.debug else DEBUG_NUM_SAMPLES_PER_COMMAND_PER_ITER
+        return 500 if not self.debug else DEBUG_NUM_SAMPLES_PER_COMMAND_PER_ITER
     def try_add_sample(self, obs, action):
         if not self.env.sensor_active:
             return 
@@ -104,7 +104,7 @@ class imitation_learning_trainer:
         plt.legend(['expert', 'agent'], loc='upper left')
         plt.show()
     def collected_enough_samples(self):
-        
+        return all([samples >= 5000 for samples in self.counters])
         return all([samples >= self.NUM_SAMPLES_PER_COMMAND_PER_ITER for samples in self.counters])
     @property
 
@@ -159,9 +159,9 @@ class imitation_learning_trainer:
 
             
             ob, done = self.env.run_step(drive_action)
-            if reached_dest or self.env.force_update_targ:
+            if reached_dest or self.env.target_reset:
                 
-                self.env.force_update_targ = False
+                self.env.target_reset = False
                 self.env.set_turn_bias(preferred_turn)
                 self.expert.update_target()
                 self.env.target_updated = False 
@@ -190,8 +190,7 @@ class imitation_learning_trainer:
         while i < N_ITER:
             print(f"iteration {i}")
             self.sample_and_relabel_trajectory(i)
-            if not self.agent.train():
-                break 
+            self.agent.train()
             i += 1
         self.agent.show_graph()
         #self.show_statistics()

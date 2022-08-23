@@ -1,7 +1,8 @@
 
 
+from gc import callbacks
 from matplotlib import pyplot as plt
-from constants import BATCH_SIZE, DEBUG_MAX_REPLAY_BUFFER_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
+from constants import BATCH_SIZE, DEBUG_MAX_REPLAY_BUFFER_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MIN_LR, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
 import h5py
 from collections import deque 
 from random import sample, shuffle
@@ -10,7 +11,9 @@ from keras.layers import Dense, Input, Flatten, Conv2D, Reshape, concatenate
 from keras import initializers
 import numpy as np
 import os
+import keras
 import cv2
+from keras.callbacks import LambdaCallback
 import tensorflow as tf
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 import carla
@@ -97,11 +100,20 @@ class mlp:
         self.module_out = add_fc_block(layer1, 128, f"{name}_l2")
 
         #speed_model_out = Dense(1, activation='relu', name='layer_2')(speed_model_in)
+class LossHistory(keras.callbacks.Callback):
+    
+    def __init__(self):
+        super().__init__()
+        self.best_val_loss = 999
+    def on_epoch_end(self, epoch, logs={}):
 
-
+        if logs['val_loss'] < self.best_val_loss:
+            self.best_val_loss = logs['val_loss']
+    
 class action_module:
     def __init__(self, base_layer :Activation):
         print("aciton module input")
+        
         temp = add_fc_block(base_layer, 256, "action_l1")
         self.ac_in = temp
         temp = add_fc_block(temp, 256, "action_l2")
@@ -188,14 +200,19 @@ class agent(Agent):
     
     def __init__(self, debug=False, train_initial_policy=False):
         self.histories = []
+        self.patience = 2
+        
+        self.n_times_val_loss_no_update = 0
+        self.loss_hist = LossHistory()
         self.suggested_actions = []
+        self.n_iter = 0
         self.num_errors = 0
         self.num_inputs_added = 0
         self.test_actions = []
         self.test_images = []
         self.test_cmds = []
         self.test_speeds = []
-
+        self.loss_window = []
         self.train_samples = [[],[],[]]
         self.debug = debug
         self.val_data = load_data(False, debug)#self.get_samples(valFiles, n_val_samples, dict())
@@ -214,14 +231,16 @@ class agent(Agent):
 
         self.early_stopping = EarlyStopping(monitor ="val_loss",
                                         restore_best_weights = True,
-                                        mode ="auto", patience = 5)
+                                        mode ="auto", patience=3)
+        self.best = np.inf
+        print(self.best)
         self.augmenter = image_augmenter()                            
         self.model = self.create_model()
         print("loading weights...")
     
         self.try_load_weights()
         self.ith_iteration = 0
-        opt = Adam(lr=1e-4)
+        opt = Adam(lr=2e-4)
         
         #large errors are heavily penalised with the mean squared error
         self.model.compile(loss='mean_squared_error', optimizer=opt, 
@@ -315,7 +334,7 @@ metrics=['mse', 'accuracy'])
             chkpt = None
             if  self.debug:
                 print("loading real weights")
-                checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.21-3!!!!.hdf5")
+                checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.12-2.hdf5")
             else:
                 print("loaded init policy weights")
                 checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights_with_augmentation_angles_corrected.hdf5")
@@ -385,7 +404,7 @@ metrics=['mse', 'accuracy'])
         acc = self.model.evaluate(x=[np.array(self.test_images), np.array(self.test_speeds), np.array(self.test_cmds)], y=np.array(self.test_actions))
 
         return
-        
+      
     def show_plots(self, history):
         #accuracy
         history = history.history
@@ -450,23 +469,41 @@ metrics=['mse', 'accuracy'])
 
     @property
     def NUM_EPOCHS(self):
-        return 10 if not self.debug else 2
+        return 5#10 if not self.debug else 2
+
+    
     def train(self):
         # num_samples = round(TRAIN_BATCH_SIZE / 3)
         # train_data = load_data()
-      
+        
        
         #samples = self.get_samples(trainFiles, n_train_samples, dict())
-        
-        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), epochs=self.NUM_EPOCHS, shuffle=True, callbacks=[self.checkpoint], validation_data=([np.array(data) for data in self.val_data[:3]], np.array(self.val_data[3])))
-        self.histories.append(history)
-
+        best_val_loss_so_far = self.best
+    
+        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), epochs=self.NUM_EPOCHS, shuffle=True, callbacks=[self.checkpoint, self.loss_hist, self.early_stopping], validation_data=([np.array(data) for data in self.val_data[:3]], np.array(self.val_data[3])))
+        self.best = self.loss_hist.best_val_loss
         if self.model.stop_training:
-            print(f"stoped at {self.ith_iteration} th iteration")
-            print(f"\n at {self.early_stopping.stopped_epoch} th epoch")
-            #reset the early stopping tool
-        
-            return True
+            
+            print(f"stopped epoch: {self.early_stopping.stopped_epoch}")
+            print(f"current best: {self.early_stopping.best}")
+            print(f"baseline: {self.early_stopping.baseline}")
+            print(f"current best: {self.loss_hist.best_val_loss}")
+            
+            
+            self.model.stop_training = False
+        self.early_stopping = EarlyStopping(monitor ="val_loss",
+                                        restore_best_weights = True,
+                                        mode ="auto", patience=3, baseline=self.best)
+        #if two values are the same it means the model has not improved at all
+        if self.best == best_val_loss_so_far:
+            self.n_times_val_loss_no_update += 1
+            if self.n_times_val_loss_no_update == self.patience:
+                return False
+        self.histories.append(history)
+        # if self.ith_iteration == 0:
+        #     self.show_graph()
+           
+     
 
         self.ith_iteration += 1
         
@@ -476,11 +513,13 @@ metrics=['mse', 'accuracy'])
         # self.show_plots(history)
         
         #self.model.fit(x=train_samples[0], y=train_samples[1], batch_size=120, shuffle=True, validation_data=val_samples, epochs=50, callbacks=[self.early_stopping])
-        return False       
+        return True       
         
     def _show_graph(self, histories, name):
     
         plt.title('model ' + name)
+       
+        
         # show val metric and metric over epochs
         for i, history in enumerate(histories):
             val_history = history.history["val_"+name]
@@ -489,10 +528,15 @@ metrics=['mse', 'accuracy'])
             acc_val = [point for point in val_history]
             plt.plot(acc)
             plt.plot(acc_val)
+        plt.xticks(np.arange(1, self.NUM_EPOCHS + 1, 1.0))
         plt.ylabel(name)
         plt.xlabel('epoch')
         plt.legend([f'train{i//2}' if i % 2 == 0 else f"val{(i - 1)//2}" for i in range(10)], loc='upper left')
-        plt.savefig("saved_graphs\\" + name + '.png')
+        if self.n_iter == 0:    
+            plt.savefig("saved_graphs\\" + name + '_first_iter.png')
+        else:
+            plt.savefig("saved_graphs\\" + name + '.png')
+
         plt.close()
     def show_graph(self, save_to_disk = True):
         self._show_graph(self.histories, 'accuracy')
@@ -551,4 +595,3 @@ metrics=['mse', 'accuracy'])
     def get_single_action(self, image,speed, command):
         steer, throttle, brake = self.get_actions([image], [speed], [command])[0]
         return np.clip(steer, -1, 1), np.clip(throttle, 0, 1), np.clip(brake, 0, 1)
-agent(True)

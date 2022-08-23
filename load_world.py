@@ -3,13 +3,13 @@ import argparse
 #from subprocess import Popen
 import subprocess
 parser = argparse.ArgumentParser()
-parser.add_argument("-port", help="choose port", default=2000)
+parser.add_argument("-p", help="choose port", default=2000)
 parser.add_argument("-t", help="town number", default="01")
 args = parser.parse_args()
 town = "Town" + args.t
 #stdout, stderr = p.communicate()
-print(args.port)
-cl = carla.Client('localhost', int(args.port))
+print(args.p)
+cl = carla.Client('localhost', int(args.p))
 cl.set_timeout(5000)
 cl.load_world(town)
 

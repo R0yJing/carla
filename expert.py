@@ -9,23 +9,21 @@ from agents.navigation.basic_agent import BasicAgent
 from environment import CarEnv
 class Expert:
     def __init__(self, env : CarEnv):
-        self.agent = VehiclePIDController(env.autocar, args_lateral = {'K_P': 1, 'K_D': 0.0, 'K_I': 0}, args_longitudinal = {'K_P': 1, 'K_D': 0.0, 'K_I': 0.0})
         self.basic_agent = BasicAgent(env.autocar, TARGET_SPEED)#
         self.basic_agent.set_destination(env.target_loc)
-        self.reverse_timer = None
-        self.last_reverse = None
-        self.reverse_bkwds = False
-        self.busy_reverse_timer = 0
-        
         self.env = env
-        self.first_collision = True
+        self.autocar = env.autocar
         assert env.target_loc is not None
         self.set_dest(env.target_loc)
+
         ##############set dest and src
-         
+    def car_respawned(self):
+        
+        return self.autocar != self.env.autocar
     def set_dest(self, destination):
         self.basic_agent.set_destination(destination)
         self.target_loc = destination
+
         #self.agent.set_destination(destination)
     #get recommended action based on observation and cmd
         
