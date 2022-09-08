@@ -8,8 +8,8 @@ from agents.navigation.controller import VehiclePIDController
 from agents.navigation.basic_agent import BasicAgent
 from environment import CarEnv
 class Expert:
-    def __init__(self, env : CarEnv):
-        self.basic_agent = BasicAgent(env.autocar, TARGET_SPEED)#
+    def __init__(self, env : CarEnv, ignore_t_lights=True):
+        self.basic_agent = BasicAgent(env.autocar, TARGET_SPEED, {'ignore_traffic_lights' : ignore_t_lights})#
         self.basic_agent.set_destination(env.target_loc)
         self.env = env
         self.autocar = env.autocar

@@ -56,6 +56,8 @@ class CarEnv:
         self.auto_control = False
         self.sensors = []
         self.stop = False
+        # self.min_action = (-1, 0, 0)
+        # self.max_action = (1, 1, 1)
         #self.tm = self.cl.get_trafficmanager(8000)
         self.spawn_vehicle()
         self.car_length, self.car_width, self.car_height = self.car_dim_info(self.autocar)
@@ -316,7 +318,7 @@ class CarEnv:
         walkers = self.get_all_walkers()
        
         for obj in (vehicles + walkers):
-            if obj.get_location().distance(loc) < self.car_length + 0.1:
+            if obj.get_location().distance(loc) < 10:
                 return True 
         return False
     def set_turn_start_end(self, turn):
@@ -596,9 +598,11 @@ class CarEnv:
 
         
         elif self.counters[2] < self.SAMPLE_LIM:
-            self.set_turn_start_end(4)
+            self.set_L_route(4)
+            #self.set_turn_start_end(4)
         elif self.counters[1] < self.SAMPLE_LIM:
-            self.set_turn_start_end(3)
+            self.set_L_route(3)
+            #self.set_turn_start_end(3)
         time.sleep(0.1)
 
         self.lane_id = self.current_wp.lane_id
@@ -627,6 +631,7 @@ class CarEnv:
         self.missed_turns_force_respawn_counter = 0
         self.tlight = None
         self.dist_to_tlight = 9e9
+        self.collected_enough_turn_samples = self.has_collected_enough_turn_samples()
         
     def reached_light(self):
         return self.autocar.is_at_traffic_light()
@@ -741,30 +746,30 @@ class CarEnv:
     @property
     def orientation_wrt_road(self):
         
-        return self.get_angle_normalised(self.current_wp.transform.rotation.yaw, self.autocar.get_transform().rotation.yaw)
+        return self.get_angle_between(self.lane_wp.transform, self.autocar.get_transform())
 
     def reached_dest(self):
         return self.get_current_location().distance(self.target_loc) < self.TARGET_TOLERANCE
-    
-    
+    @property
+    def lane_wp(self):
+
+        current_wp = self.current_wp
+        if current_wp.lane_id != self.source_wp.lane_id and current_wp.lane_id != self.target_wp.lane_id:
+            current_wp = current_wp.get_right_lane()
+            if current_wp is None:
+                
+                current_wp = self.current_wp
+        return current_wp
 
     @property
     def distance_from_lane_edge(self):
         
         
         # nearest_quadrant = round(angle / 90, 0) * 90
-        current_wp = self.current_wp
-        if current_wp.lane_id != self.source_wp.lane_id:
-            current_wp = current_wp.get_right_lane()
-
-            if current_wp is None or current_wp.lane_id != self.source_wp.lane_id:
-                
-                current_wp = self.current_wp
-            
         
-        lw = current_wp.lane_width
+        lw = self.lane_wp.lane_width
     
-        dist = self.dist_between_transform(current_wp.transform, self.autocar.get_transform())        
+        dist = self.dist_between_transform(self.lane_wp.transform, self.autocar.get_transform())        
         return lw / 2 - dist
     def get_dist_between_src_dest(self):
         return self.dist_between_transform(self.source_wp.transform, self.target_wp.transform)
@@ -814,7 +819,7 @@ class CarEnv:
         else:
             return random.choice(preferred_wps).transform.location
     def set_autopilot(self, yes):
-        
+        return
         tm_port = self.tm.get_port()
         self.autocar.set_autopilot(yes, tm_port)
 
@@ -919,9 +924,11 @@ class CarEnv:
                 
                 return True 
             #it is abnormal to wait for that long for a traffic jam
-            elif time.time() - self.waypoint_timer > 30:
+            elif time.time() - self.waypoint_timer > 30 and self.collected_enough_turn_samples:
                 return True
-            
+        
+            elif time.time() - self.waypoint_timer > 60 and not self.collected_enough_turn_samples:
+                return True
         return False
     def reset_source_and_target(self):
         '''if timed out should be called before resetting the waypoint timer'''
@@ -992,12 +999,136 @@ class CarEnv:
         (relative_angle)
         return relative_angle <= 5
     
-    def made_turn(self):
-        return (self.current_direction == 3 or self.current_direction == 4 ) and abs(self.get_angle_between(self.autocar.get_transform(), self.target_wp.transform)) < 5
-           
+    def get_I_route(self):
+        wps = [self.get_wp_from_loc(trans.location) for trans in self.sps]
+        source_wp = random.choice(wps)
+        wps.remove(source_wp)
+        min_dist = 20
+        max_dist = 200
+        next_wp  =source_wp
+        d = 0
+        while d < max_dist:
+            if len(next_wp.next(1)) > 1:
+                if d < min_dist:
+                    source_wp = random.choice(wps)
+                    wps.remove(source_wp)
+                    next_wp = source_wp
+                    d = 0
+            d += 1
+        return source_wp, next_wp
+    def set_L_route(self, direction):
+        self.set_turn_start_end(direction)
+        self.current_direction = direction
+        max_dist = 200 
+        d = 6.5
+        source_wp = self.source_wp
+        prev_wp = source_wp
+        while d < max_dist:
+            if len(prev_wp.previous(1)) > 1:
+                break
+            prev_wp = prev_wp.previous(1)[0]
+            d += 1
+        desired_dist = (d - 6.5) * random.random() 
+       
+        prev_wp = source_wp.previous(desired_dist)[0]
+        self.autocar.set_transform(prev_wp.transform)
+        self.source_loc = prev_wp.transform.location
+        self.intermediate_source_loc = self.source_loc
+    def set_route(self):
+        min_idx = self.counters.index(min(self.counters))
+        
+        if min_idx == 0:
+            start, end = self.get_I_route()
+            self.source_loc = start.transform.location
+            self.target_loc = end.transform.location
+            self.autocar.set_transform(start.transform)
+            self.current_direction = 2
+        else:
+            self.set_L_route(min_idx + 2)
+    def kickstart(self, duration=1):
+        self.kickstarted = True
+        s = time.time()
+        while time.time() - s < duration:
+        
+            self.autocar.apply_control(carla.VehicleControl(steer=0, throttle=1, brake=0))
+    def reset1(self):
+        self._reset()
+        self.set_route()
+        self.kickstarted = False
+        while self.front_camera is None or self.left_camera is None or self.right_camera is None:
+            
+            time.sleep(0.01)
+        self.time_counter = 0
+        self.stop_moving_timer = time.time()
+        self.collision_timer = None
+        self.sensor_active = True
+        return (self.front_camera, self.get_speed(), self.current_direction), False
+
+
+    def get_long_dist_from_src_to_dest(self):
+        dist = self.get_dist_between_src_dest()
+        vec0 = self.target_loc - self.source_loc
+        vec1 = self.source_wp.next(0.5)[0].transform.location - self.source_loc
+        rad = abs(math.radians(self.calculate_angle_between_vec(vec0, vec1)))
+    
+        return dist * math.sin(rad) + dist * math.cos(rad)
+    def step1(self, control):
+        reward = self.reward_func()
+        self.view_spectator_birds_eye()
+
+        img = self.front_camera
+        speed = self.get_speed()
+        cmd = self.current_direction
+        done = True
+        if not self.on_lane:
+            print("off lane")
+        if not self.on_lane and (time.time() - self.last_lane_invasion_timer > LANE_INV_TIMEOUT and self.lane_wp.lane_id == self.current_wp.lane_id):
+            self.on_lane = True
+
+        if self.missed_turn() or self.collision_timer is not None:
+            if self.missed_turn():
+                print("missed turn ")
+            elif self.collision_timer is not None:
+                print("collided")
+             
+            #self.reset1()
+
+            
+        elif self.reached_dest():
+            self.counters[self.current_direction - 2] += 1
+            #self.reset1()
+            print("reached dest")
+        elif round(self.get_speed(), 2) == 0:
+            if time.time() - self.stop_moving_timer > 10:
+                done = True
+            elif not self.kickstarted:
+                self.kickstart()
+                #self.reset1()
+        else:
+            
+            if round(self.get_speed(), 2) > 0:
+                self.stop_moving_timer = time.time()
+            done = False
+
+            #dist = self.intermediate_source_loc.distance(self.lane_wp.transform.location)
+            
+            #most likely have missed the target
+        if not done:
+            self.autocar.apply_control(control)
+        return (img, speed, cmd), reward, done, None
+    def reward_func(self):
+        if self.collision_timer is not None or not self.on_lane or self.missed_turn():
+            return -200
+        elif self.reached_dest():
+            return 100
+        else:
+            s = self.get_speed() 
+            return abs(s * math.cos(math.radians(self.orientation_wrt_road))) - abs(s * math.sin(math.radians(self.orientation_wrt_road))) - abs(s* self.distance_from_lane_edge)
+
     def run_step(self, control):
       
-        self.view_spectator_birds_eye()
+        self.view_spectator_fps()
+        
         if not self.on_lane and time.time() - self.last_lane_invasion_timer > LANE_INV_TIMEOUT:
             self.on_lane = True
         
@@ -1023,7 +1154,7 @@ class CarEnv:
                 #     done = True
             #self.w.debug.draw_string(self.target_loc, "replanned target", life_time=10)
         
-        if self.reached_dest() or self.made_turn() or self.force_update_targ:
+        if self.reached_dest() or self.turn_made() or self.force_update_targ:
             
             if not self.training: #running benchmark
                 direction = 2 if self.current_direction == 5 else self.current_direction
@@ -1106,6 +1237,8 @@ class CarEnv:
                 done = True
         
         if not done:
+            print("applying control")
+
             self.autocar.apply_control(control)
         return ((self.front_camera, self.left_camera, self.right_camera), self.get_speed(), self.current_direction), done
     def destroy_car(self):
@@ -1253,7 +1386,8 @@ class CarEnv:
         #self.w.debug.draw_string(self.autocar.get_location(), f"{angle}")
         self.w.debug.draw_string(self.target_loc, f"TARGET")
         dist_npc_car = self.npc_car.get_location().distance(self.autocar.get_location()) if self.npc_car is not None else -1
-        self.w.debug.draw_string(self.get_current_location(), f"{round(s, 2), round(t, 2), round(b, 2)}\n{self.current_dir_str}\ncar in front: {self.traffic_jam}\ncollided: {self.collision_timer is not None}\ninfracted: {not self.on_lane}\ndist from edge: {round(self.distance_from_lane_edge, 2)}")
+        self.w.debug.draw_string(self.lane_wp.transform.location, "W")
+        self.w.debug.draw_string(self.get_current_location(), f"{round(s, 2), round(t, 2), round(b, 2)}\n{self.current_dir_str}\ncar in front: {self.traffic_jam}\ncollided: {self.collision_timer is not None}\ninfracted: {not self.on_lane}\ndist from edge: {round(self.distance_from_lane_edge, 2)} ")
    
 
         #dist to npc car: {dist_npc_car}\ns={s}, t={t}, b={b}

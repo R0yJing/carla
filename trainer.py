@@ -36,7 +36,7 @@ class imitation_learning_trainer:
         else:
             #print("switching to agent control")
             s,t,b=self.agent.get_action(ob[0], spd, cmd)
-            
+            b = 0
             return carla.VehicleControl(steer=s, throttle=t, brake=b)
       #  time.sleep(999)
     # def has_collected_enough_samples_per_episode(self):
@@ -52,7 +52,11 @@ class imitation_learning_trainer:
     @property
     def NUM_SAMPLES_PER_COMMAND_PER_ITER(self):
         return NUM_SAMPLES_PER_COMMAND_PER_ITER if not self.debug else DEBUG_NUM_SAMPLES_PER_COMMAND_PER_ITER
-    def try_add_sample(self, obs, action):
+    def try_add_sample(self, obs, action, n_samples_per_cmd_type=None):
+        if n_samples_per_cmd_type is None:
+            n_samples_per_cmd_type = self.NUM_SAMPLES_PER_COMMAND_PER_ITER
+        else:
+            n_samples_per_cmd_type = 22
         if not self.env.sensor_active:
             return 
         imgs, speed, cmd = obs
@@ -93,16 +97,7 @@ class imitation_learning_trainer:
         return carla.VehicleControl(throttle=throttle, steer = steer, brake=brake)
 
    
-    def print_steers(self):
-        from matplotlib import pyplot as plt
-        plt.plot(self.expert_steers)
-        plt.plot(self.agent_steers)
-
-        plt.title('steer graph')
-        plt.ylabel('steer')
-        plt.xlabel('time')
-        plt.legend(['expert', 'agent'], loc='upper left')
-        plt.show()
+    
     def collected_enough_samples(self):
         
         return all([samples >= self.NUM_SAMPLES_PER_COMMAND_PER_ITER for samples in self.counters])
@@ -137,33 +132,22 @@ class imitation_learning_trainer:
             # print(f"dist {self.env.abs_distance_from_lane_edge}")
             
             preferred_turn = self.counters.index(min(self.counters)) + 2
-        
-            # if len(self.expert_steers) == 50:
-            #     self.print_steers()
-            #     return 
-        
+
             drive_action = self.DR(ob, i_iter, beta)
-            
-            
-            # if self.env.current_direction == 3 or self.env.current_direction == 4:
-            #     print("turning")
-            #     pass
-            #agent_control = self.translate_action_to_control(action)
             expert_action = self.expert.get_action()
-            #print(f"orientation {self.env.orientation_wrt_road}")
-            # print(self.counters)
-            # print(self.num_obs_at_traffic_light_counter)
-            #self.env.set_guideline_control(expert_action)
+          
             reached_dest = self.env.reached_dest()
             self.env.w.debug.draw_string(self.expert.target_loc, "expert destination")
 
             
             ob, done = self.env.run_step(drive_action)
-            if reached_dest or self.env.force_update_targ:
+            #if reached_dest or force_update_targ
                 
+            if self.expert.target_loc != self.env.target_loc:
+                self.expert.update_target()
                 self.env.force_update_targ = False
                 self.env.set_turn_bias(preferred_turn)
-                self.expert.update_target()
+                
                 self.env.target_updated = False 
             #in case a collision occurred or something reset
             if done:

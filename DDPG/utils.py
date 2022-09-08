@@ -1,6 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from carla import VehicleControl
+def get_control(action):
+        action = action.numpy()
 
+        return VehicleControl(steer=action[0].item(), throttle=action[1].item(), brake=action[2].item())
 def plot_learning_curve(x, scores, figure_file):
     running_avg = np.zeros(len(scores))
     for i in range(len(running_avg)):

@@ -6,9 +6,9 @@ from constants import BENCHMARK_LIMIT, COLLISION_TIMEOUT, DEBUG_BENCHMARK_LIMIT,
 import carla
 import sys
 
-sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
+#sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
 #from coiltraine_agent import *
-
+from DDPG.ddpg_tf2 import *
 
 from neural_net_v2 import agent
 def infraction_occured(env : CarEnv):
@@ -28,15 +28,19 @@ def get_current_command_num(env : CarEnv):
 def main():
     
     debug=False
-    #baseline_agt =ImitationLearning('Town01', False)
-    baseline_agt = agent(debug=True)
+    
+    #baseline_agt = agent(debug=True)
     #baseline_agt = Agent()
     total_dist_travelled_per_ep = 0
     dist_per_episode = 1000
     counters = [0,0,0]
     traffic_light_counter = [0]
     debug = False
+
     env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=False, skip_turn_samples= True, port=2000)
+    baseline_agt = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)), env=env,
+             n_actions=3)
+    baseline_agt.load_models()
     total_dist_travelled = 0
     missed_turns = 0
 

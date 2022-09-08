@@ -68,9 +68,9 @@ def get_img_array(idx):
 class image_module:
     def __init__(self):
         #add 1) to denote working with a grayscale image =
-        self.image_model_in = Input((IM_HEIGHT, IM_WIDTH,3))
+        self.module_in = Input((IM_HEIGHT, IM_WIDTH,3))
         #base_layer filter kernsize  strides
-        temp = add_conv_block(self.image_model_in, 32, 5, 2, "image_module_l1")
+        temp = add_conv_block(self.module_in, 32, 5, 2, "image_module_l1")
         temp = add_conv_block(temp, 32, 3, 1, "image_module_l2")
         temp = add_conv_block(temp, 64, 3, 2, "image_module_l3")
         temp = add_conv_block(temp, 64, 3, 1, "image_module_l4")
@@ -85,8 +85,8 @@ class image_module:
         print(temp.shape.as_list())
         # temp = Flatten()(temp)
         temp = add_fc_block(temp, 512, "image_module_fc_l9")
-        self.image_model_out = add_fc_block(temp, 512, "image_module_fc_l10")
-        #image_model_out = Dense(512, activation='relu', name='layer_1')(image_model_in)
+        self.module_out = add_fc_block(temp, 512, "image_module_fc_l10")
+        #module_out = Dense(512, activation='relu', name='layer_1')(module_in)
         
         
 #model1 = Model(model1_in, model1_out)
@@ -198,7 +198,7 @@ class Generator(Sequence):
             random.shuffle(d)
 class agent(Agent): 
     
-    def __init__(self, debug=False, train_initial_policy=False):
+    def __init__(self, debug=False, train_initial_policy=False, rl=False):
         self.histories = []
         self.patience = 2
         
@@ -215,10 +215,11 @@ class agent(Agent):
         self.loss_window = []
         self.train_samples = [[],[],[]]
         self.debug = debug
-        self.val_data = load_data(False, debug)#self.get_samples(valFiles, n_val_samples, dict())
-        
-        if train_initial_policy:
-            self.train_samples = load_data_2(debug=debug)
+        if not rl:
+            self.val_data = load_data(False, debug)#self.get_samples(valFiles, n_val_samples, dict())
+            
+            if train_initial_policy:
+                self.train_samples = load_data_2(debug=debug)
         
          
             # self.train_images = [np.random.uniform(0, 255, (88, 200, 3)) for i in range(500)]
@@ -334,7 +335,7 @@ metrics=['mse', 'accuracy'])
             chkpt = None
             if  self.debug:
                 print("loading real weights")
-                checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.12-2.hdf5")
+                checkpt = os.path.join(CHECKPT_FOLDER_DIR, "best_weights_train_init_policy=False-val_loss-0.16-3!!!!.hdf5")
             else:
                 print("loaded init policy weights")
                 checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights_with_augmentation_angles_corrected.hdf5")
@@ -351,12 +352,29 @@ metrics=['mse', 'accuracy'])
         self.img_module = img_module
 
         cmd_module = mlp(4, 'command')
-        concatenated = concatenate([img_module.image_model_out, spd_module.module_out, cmd_module.module_out]) #TODO fix!!!
+        concatenated = concatenate([img_module.module_out, spd_module.module_out, cmd_module.module_out]) #TODO fix!!!
         intermediate_layer = add_fc_block(concatenated, 512, "intermediate_layer") 
         #one for each command type
        
         ac_module = action_module(intermediate_layer)
-        return Model([self.img_module.image_model_in, self.spd_module.module_in, cmd_module.module_in], ac_module.action_module_out)
+        return Model([self.img_module.module_in, self.spd_module.module_in, cmd_module.module_in], ac_module.action_module_out)
+    
+    def create_model_with_tanh_bound(self):
+        spd_module = mlp(1, "speed")
+        self.spd_module = spd_module
+        
+        img_module = image_module()
+        self.img_module = img_module
+
+        cmd_module = mlp(4, 'command')
+        concatenated = concatenate([img_module.module_out, spd_module.module_out, cmd_module.module_out]) #TODO fix!!!
+        intermediate_layer = add_fc_block(concatenated, 512, "intermediate_layer") 
+        
+        #one for each command type
+       
+        ac_module = action_module(intermediate_layer)
+        normalised_out = keras.activations.tanh(ac_module.action_module_out)
+        return Model([self.img_module.module_in, self.spd_module.module_in, cmd_module.module_in],  normalised_out)
 
     def _pop_from_buffer(self):
         self.train_images.remove(self.train_images[0])

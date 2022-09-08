@@ -2,7 +2,7 @@
 
 
 from matplotlib import pyplot as plt
-from constants import BATCH_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
+from constants import BATCH_SIZE, DEBUG_MAX_REPLAY_BUFFER_SIZE, MAX_REPLAY_BUFFER_SIZE, IM_HEIGHT, IM_WIDTH, MINI_BATCH_SIZE, NUM_AGENT_TRAIN_STEPS_PER_ITER, NUM_EPOCHS, STORAGE_LIMIT, TARGET_SPEED
 import h5py
 from collections import deque 
 from random import sample, shuffle
@@ -14,11 +14,12 @@ import numpy as np
 import os
 import cv2
 import tensorflow as tf
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping, Callback
 import carla
 import glob
 from load_data_v2_mask import *
-
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)
 #https://stackoverflow.com/questions/39691902/ordering-of-batch-normalization-and-dropout
 #apply dropout after activation https://stackoverflow.com/questions/39691902/ordering-of-batch-normalization-and-dropout
 #source that recommend he_uniform kernel initializer, instead of the default glorot uniform initializer (when using relu as activation)
@@ -35,16 +36,17 @@ from image_augmenter import image_augmenter
 CHECKPT_FOLDER_DIR = r"C:\Users\autpucv\Desktop\my scripts\imitation_learning\checkpoints"#r".\checkpoints"
 NUM_TRAIN_SAMPLES = 74800
 
+
 def custom_mse(y_true, y_pred):
-            mask = tf.constant([0,0,0])
-            l_and = tf.logical_and
-            l_not = tf.logical_not
-            reduce = tf.math.reduce_all
-            m=l_not(l_and(reduce(K.equal(y_true,mask),axis=1), reduce(K.equal(y_pred, mask),axis=1)))
-            
-            return MeanSquaredError()(y_true[m], y_pred[m])
-        
-        
+    # mask = tf.zeros(3)
+    # l_and = tf.logical_and
+    # l_not = tf.logical_not
+    # reduce = tf.math.reduce_all
+    
+    # m=l_not(l_and(reduce(tf.equal(y_true,mask),axis=1), reduce(K.equal(y_pred, mask),axis=1)))
+    # mse = MeanSquaredError()(y_true[m], y_pred[m])
+    return MeanSquaredError()(y_true, y_pred) * 3
+
 def add_fc_block(base_layer, num_units, name, dropout=0.5):
     #first need to add wx+b layer
     #default weight initializer is glorot uniform
@@ -78,70 +80,6 @@ def get_img_array(idx):
     #print("shpape of image")
     #print(img_array.shape)
     return img_array / 255.0
-class test_image_module:
-    def eval(self):
-        _, mse = self.model.evaluate(self.x, self.y, verbose='1')
-        print(mse * 100.0)
-
-    def print_info(self):
-        weights = self.model.get_weights()
-        print("=============weights==============")
-        print()
-        for i, w in enumerate(weights):
-            print(f"layer {i}")
-            print(w.shape)
-            print(w)
-            print("--------------")
-        print()
-        print("=============summary==============")
-        print(self.model.summary())
-    def __init__(self):
-        x = [self.add_noise(250) for i in range(1000)] + [self.add_noise(255/2.0) for i in range(1000)] + [self.add_noise(0) for i in range(1000)]
-        y = [random.random() / 10.0 for i in range(1000)] + [1 + random.random() / 10.0 for i in range(1000)] + [2 + random.random() / 10.0 for one in range(1000)]
-        for i in range(3000 - 1):
-            ind = random.randint(i + 1, 3000 - 1)
-            x[i], x[ind] = x[ind], x[i]
-            y[i], y[ind] = y[ind], y[i]
-        self.x = np.array(x).reshape(len(x), 88,200,3)
-        self.y = np.array(y)
-        #add 1) to denote working with a grayscale image =
-        im_module = image_module()
-        self.model = Model(im_module.image_model_in, Dense(1)(im_module.image_model_out))
-
-        # temp = add_conv_block(temp, 64, 3, 2, "image_module_l3")
-        # temp = add_conv_block(temp, 64, 3, 1, "image_module_l4")
-        # temp = add_conv_block(temp, 128, 3, 2, "image_module_l5")
-        # temp = add_conv_block(temp, 128, 3, 1, "image_module_l7")
-        # temp = add_conv_block(temp, 256, 3, 1, "image_module_l8")
-        #flatten the input so the output is flat as well
-     
-        self.print_info()
-        try:
-            
-            self.model.load_weights(r".\checkpoints\test_image_weights.hdf5")
-        except:
-            pass
-        self.print_info()
-        from keras.optimizers import Adam
-        opt = Adam(lr=1e-4, beta_1=0.7,beta_2=0.85)
-        self.model.compile(optimizer=opt, loss='mse', metrics=['mse'])
-
-    def add_noise(self, base):
-        mat = np.random.uniform(0, 5, (88,200,3))
-        mat += base 
-
-        return mat / 255.0
-    def train(self): #mse should use linear activation
-        #sigmoid for classfication problems 
-        print(self.model.summary())
-        data = load_data_2()
-        
-        chkpt = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, "test_image_weights.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='min')
-        history = self.model.fit(x=self.x, y=self.y, batch_size=120, validation_split=0.2, epochs=NUM_EPOCHS, verbose='auto', shuffle=True, callbacks=[chkpt])
-        try:
-            show_accuracy_graph([history])
-        except:
-            print("cannot show mse graph")
 class image_module:
     def __init__(self):
         #add 1) to denote working with a grayscale image =
@@ -228,92 +166,105 @@ import sys
 from keras.utils import Sequence
 import keras.backend as K
 sys.path.insert(0, r"C:\Users\autpucv\Downloads\CARLA_0.8.2\PythonClient\carla\agent")
-from agent import Agent
+#from agent import Agent
+
+class LossHistory(Callback):
+    
+    def __init__(self, best=np.inf):
+        super().__init__()
+        self.best_val_loss = best
+    def on_epoch_end(self, epoch, logs={}):
+        print(logs)
+        if logs['val_loss'] < self.best_val_loss:
+            self.best_val_loss = logs['val_loss']
+    
 class Generator(Sequence):
+    
     # Class is a dataset wrapper for better training performance
-    def __init__(self, dataset, batch_size=BATCH_SIZE):
-        
+    def __init__(self, dataset, batch_size=BATCH_SIZE, is_val=False, num_train_samples=None):
+        self.is_val = is_val
         self.dataset = dataset
-        self.batch_size = batch_size // 4 
+        self.batch_size = batch_size // 3 
         self.indices = [i for i in range(len(dataset[0]))]
         random.shuffle(self.indices) # tuples containing (img, ..., act)
         self.augmenter = image_augmenter()
         self.num_steps = 0
-        self.offset = 0
+
+        self.num_train_samples = num_train_samples
+        if is_val:
+            self.min_subset_size = min([len(subset ) for subset in self.dataset])
+        
     def __len__(self):
         #each branch will fit 120, and there are 4 batches
-        return len(self.indices) // self.batch_size
-
+        if not self.is_val:
+            return len(self.indices) // self.batch_size
+        else:
+            #the entire val set counts as batch
+            return 1
     def __getitem__(self, idx):
-        idx += self.offset * self.batch_size
-        
+        ##########
+        zero_mask = [0.0, 0.0, 0.0]
+        one_mask = [1.0, 1.0,1.0]
+        mask = [[one_mask, zero_mask, zero_mask],
+                [zero_mask, one_mask, zero_mask],
+                [zero_mask, zero_mask, one_mask]]
+      
+        ##################
         samples = []
+        
         for subset in self.dataset:
-            samples += subset[idx*self.batch_size : (idx + 1) * self.batch_size]
-        
-        random.shuffle(samples)
-        
+            if self.is_val:
+                
+                samples += subset[:min(int(self.num_train_samples * 0.33 // 3), self.min_subset_size)]
+            else:
+                
+                samples += subset[idx*self.batch_size : (idx + 1) * self.batch_size]
+                random.shuffle(samples)
+        #normlisation
         batch_img = self.augmenter.aug(np.array([sample[0] for sample in samples]))/255
-        batch_speeds = np.array([sample[1] for sample in samples])
-        batch_masks = np.array([sample[2] for sample in samples])
+        batch_speeds = np.array([sample[1] for sample in samples]) / TARGET_SPEED
+        batch_cmds = [sample[2] for sample in samples]
+        batch_masks = np.array([mask[cmd - 2] for cmd in batch_cmds])
+
         # actions = [batch_masks[:,i,:].reshape((-1,3)) for i in range(4) ]
             
         batch_actions = [sample[3] for sample in samples]
-        
-        follow_lane_actions = np.array([action[0] for action in batch_actions])
-        left_actions = np.array([action[1] for action in batch_actions])
-        right_actions = np.array([action[2] for action in batch_actions])
-        straight_actions = np.array([action[3] for action in batch_actions])
-        return ([batch_img, batch_speeds, batch_masks], [follow_lane_actions, left_actions, right_actions, straight_actions])
+        # x = []
+        # follow_lane_actions = np.array([action[0] if cmd == 2 else zero_mask for action, cmd in zip(batch_actions, batch_cmds)])
+        # left_actions = np.array([action[1] if cmd == 3 else zero_mask for action, cmd in zip(batch_actions, batch_cmds)])
+        # right_actions = np.array([action[2] if cmd == 4 else zero_mask for action, cmd in zip(batch_actions, batch_cmds)])
+        return ([batch_img, batch_speeds, batch_masks], 
+        [*(np.array([action if cmd == current_cmd else zero_mask 
+        for action, cmd in zip(batch_actions, batch_cmds)]) 
+        for current_cmd in range(2, 5))])
     
-    def on_epoch_end(self):
-        random.shuffle(self.indices)
-class agent(Agent): 
+    def on_epoch_end(self):        
+        for subset in self.dataset:
+            random.shuffle(subset)
+
+class agent: 
     
-    def __init__(self, fake_training=False, training=True, simulating=False):
+    def __init__(self, debug_level=None, train_init_policy=False, rl=False):
         self.histories = []
-        self.mse = tf.keras.losses.MeanSquaredError()
-        
-        self.suggested_actions = []
+        self.debug_level = debug_level
+        self.suggested_actions = []    
         self.num_errors = 0
         self.num_inputs_added = 0
-        self.test_actions = []
-        self.test_images = []
-        self.test_cmds = []
-        self.test_speeds = []
+        self.train_samples = [[], [], []]
+        self.val_data = []
+        self.minimum_loss = np.inf
+        self.loss_hist = LossHistory(self.minimum_loss)
 
-        self.train_actions = []
-        self.train_images = []
-        self.train_cmds = []
-        self.train_speeds = []
-        split = int(math.ceil(0.2 * MAX_REPLAY_BUFFER_SIZE))
-        if not fake_training and not simulating:
-
-            try:
-                if training:
-                    
-                        #self.train_images, self.train_speeds, self.train_cmds = self.normalise_samples(d[0], d[1], d[2])
-                        #self.train_actions = np.array(d[3])
-                        
-                        self.split = split
-                        #self.train_images, self.train_speeds, self.train_cmds, self.train_actions = load_data()
-                
-                else:
-                    with open(r'.\recordings\testing\recording-1-p1.pkl', 'wb') as f:
-                        d = pickle.load(f)
-                        self.test_images, self.test_speeds, self.test_cmds = self.normalise_samples(d[0], d[1], d[2])
-                        self.test_actions = np.array(d[3])
-
-            except Exception as e:
-                raise e
-        elif fake_training: pass
-            # self.train_images = [np.random.uniform(0, 255, (88, 200, 3)) for i in range(500)]
-            # self.train_actions = [[0, 0.5, 0] for i in range(500)]
-            # self.train_cmds = ["straight" for i in range(500)]
-            # self.train_speeds = [30 for i in range(500)]
-        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, "weights_multi_branch"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
-        self.early_stopping = EarlyStopping(monitor ="val_loss", restore_best_weights = True, mode ="auto", patience = 3)
-                               
+        self.n_times_val_loss_no_update = 0
+        self.patience = 2
+        if not rl:
+            self.val_data = load_data_2(False, debug_level)#self.get_samples(valFiles, n_val_samples, dict())
+            if train_init_policy:
+                self.train_samples = load_data_2(debug_level=debug_level)
+        
+        self.checkpoint = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, ("weights_multi_branch.hdf5" if not self.debug_level else "weights_multi_branch_debug.hdf5")), monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+        self.early_stopping = EarlyStopping(monitor ="val_loss", restore_best_weights = True, mode ="min", patience = 3)
+                 
                     
         self.augmenter = image_augmenter()                            
         self.model = self.create_model()
@@ -324,10 +275,9 @@ class agent(Agent):
         
         opt = Adam(lr=1e-4)
         #large errors are heavily penalised with the mean squared error
-        tf.config.run_functions_eagerly(True)
+        #tf.config.run_functions_eagerly(True)
         tf.data.experimental.enable_debug_mode()
-        self.model.compile(loss=custom_mse, optimizer=opt, 
-    metrics=['mse'], run_eagerly=True)
+        self.model.compile(loss=custom_mse, optimizer=opt, metrics=[custom_mse])
         self.split = math.ceil(MAX_REPLAY_BUFFER_SIZE * 0.2)
     
     
@@ -402,73 +352,22 @@ class agent(Agent):
                 
                 print("generate")
                 yield None
-    def batch_generator(self, is_validation, upperlim, num_data_loads=2):
-        filenames = glob.glob('dataset\SeqVal\*.h5' if is_validation else 'dataset\SeqTrain\*.h5')
-        train_searched_indices = dict()
-        num_samples_per_load = upperlim / num_data_loads
-        ct = 0
-        #the generator function does not reset after an epoch
-        while True:
-            print("epoch>>>>>>>>>>>..."+str(ct))
-            ct+=1
-            # if (len(self.cache['images']) != 0 and not is_validation) or (len(self.val_cache['images']) != 0 and is_validation):
-            #     print('cache')
-
-            #     cache = self.val_cache if is_validation else self.cache
-            #     random_indices = [i for i in range(upperlim)]
-            #     random.shuffle(random_indices)
-                
-            #     for i in range(0, upperlim, 120):
-            #         yield ([self.augmenter.aug(np.array(cache['images'][i:i+120]))/255, np.array(cache['speeds'][i:i+120]), np.array(cache['commands'][i:i+120])], np.array(cache['actions'][i:i+120]))
-                
-            # else:
-            print("no cache")
-            for i in range(2):
-                samples = self.get_samples(filenames, num_samples_per_load, train_searched_indices)
-                random.shuffle(samples)
-                for i in range(0, len(samples), 120):
-                
-                    batch = samples[i:i+120]
-                    imgs = [sample[0] for sample in batch]
-                    spds = [sample[1] for sample in batch]
-                    cmds = [sample[2] for sample in batch]
-                    actions = [sample[3] for sample in batch]
-                    augmented_imgs = self.augmenter.aug(np.array(imgs))/255
-                    spds = np.array(spds) / TARGET_SPEED
-                    cmds = np.array(cmds)
-                    actions = np.array(actions)
-                    data_tuple = ([augmented_imgs, spds, cmds], actions)
-                    
-                    #self.add_to_cache(([imgs, spds, cmds], actions), is_validation)
-                    yield data_tuple
-    def add_to_cache(self, data_tuple, is_validation):
-        cache = self.val_cache if is_validation else self.cache
-        cache['images'] += [sample for sample in data_tuple[0][0]]
-        cache['speeds'] += [sample for sample in data_tuple[0][1]]
-        cache['commands'] += [sample for sample in data_tuple[0][2]]
-        cache['actions'] += [sample for sample in data_tuple[1]]
-    def load_data(self,filename, training=True):
-
-        with open(filename, 'rb') as f:
-            from pympler.asizeof import asizeof
-            print(asizeof(f))
-            d = pickle.load(f)
-            
-            normalised_imgs, normalised_speeds, normalised_cmds = self.normalise_samples(d[0], d[1], d[2])
-            normalised_actions = np.array(d[3])
-            if training:
-                self.train_images += [img for img in normalised_imgs]
-                self.train_cmds += [spd for spd in normalised_cmds]
-                self.train_actions += [act for act in normalised_actions]
-                self.train_speeds += [spd for spd in normalised_speeds]
-            else:
-                self.test_images += [img for img in normalised_imgs]
-                self.test_cmds += [spd for spd in normalised_cmds]
-                self.test_actions += [act for act in normalised_actions]
-                self.test_speeds += [spd for spd in normalised_speeds]
     def try_load_model(self):
+        checkpt = os.path.join(CHECKPT_FOLDER_DIR, "weights_multi_branch.hdf5")
         
-        self.model = tf.keras.models.load_model(CHECKPT_FOLDER_DIR +r"\weights_multi_branch")
+        if os.path.exists(checkpt):
+            try:
+                f = open("min_loss.txt", 'r')
+                self.minimum_loss = int(f.readline())
+            except:
+                print("cannot read minloss")
+            finally:
+                f.close()
+            print(f"found file {checkpt}")
+            self.model.load_weights(checkpt)
+        else:
+            print("cannot find" + checkpt)
+        #self.model = tf.keras.models.load_model(CHECKPT_FOLDER_DIR +r"\weights_multi_branch")
         #self.model.save_weights(CHECKPT_FOLDER_DIR + r"\weights_multi_branch.hdf5")
         #self.model.load_weights(CHECKPT_FOLDER_DIR + r"\weights_multi_branch")
     def try_load_weights(self):
@@ -485,7 +384,7 @@ class agent(Agent):
                 model.load_weights(os.path.join(CHECKPT_FOLDER_DIR, file))
     
     def create_model(self):
-        masks = Input((4, 3))
+        masks = Input((3, 3))
         spd_module = mlp(1, "speed")
         self.spd_module = spd_module
         
@@ -498,10 +397,11 @@ class agent(Agent):
         #one for each command type
         models = []
         masked_outputs = []
-        for i in range(4):
+        for i in range(3):
             ac_module = action_module(intermediate_layer, i)
             print(ac_module.action_module_out.shape)
             print(masks.shape)
+            
             branch_masks = Flatten()(masks[:, i, :])
             print(branch_masks.shape)
             masked_outputs.append(Multiply()([ac_module.action_module_out, branch_masks]))
@@ -514,20 +414,22 @@ class agent(Agent):
         self.train_speeds.remove(self.train_speeds[0])
         self.train_actions.remove(self.train_actions[0])
 
-    def _add_to_buffer(self, img, speed, cmd, action):
-        '''assuming normalised'''
+    @property
+    def MAX_REPLAY_BUFFER_SIZE(self):
+        return MAX_REPLAY_BUFFER_SIZE if not self.debug_level else DEBUG_MAX_REPLAY_BUFFER_SIZE
+
+    def _add_to_replay_mem(self, img, speed, cmd, action):
         
-        self.train_images.insert(MAX_REPLAY_BUFFER_SIZE - self.split, img)
-        self.train_speeds.insert(MAX_REPLAY_BUFFER_SIZE - self.split, speed)
-        self.train_cmds.insert(MAX_REPLAY_BUFFER_SIZE - self.split, cmd)
-        self.train_actions.insert(MAX_REPLAY_BUFFER_SIZE - self.split, action)
-
-
+        self.train_samples[cmd - 2].append((img, speed, cmd, action))
+        
+    
     def insert_input(self, image, speed, cmd, action):
-                    
-        if len(self.test_images) == MAX_REPLAY_BUFFER_SIZE:
-            self._pop_from_buffer()
-        self._add_to_buffer(image, speed, cmd, action)
+    
+        if len(self.train_samples[cmd - 2]) == self.MAX_REPLAY_BUFFER_SIZE // 3:
+            
+            self.train_samples[cmd - 2].remove(self.train_samples[cmd -2][0])
+    
+        self._add_to_replay_mem(image, speed, cmd, action)
     
     
 
@@ -543,28 +445,56 @@ class agent(Agent):
         acc = self.model.evaluate(x=[np.array(self.test_images), np.array(self.test_speeds), np.array(self.test_cmds)], y=np.array(self.test_actions))
 
         return
-    def _show_plots(self, history, metric):
-        history = history.history
-        histories = [history[f'val_multiply_{metric}']] + [history[f'val_multiply_{i}_{metric}'] for i in range(1,4)]
-        plt.title(metric)
-        plt.plot(history[f'multiply_{metric}'])
-        plt.plot(history[f'val_multiply_{metric}'])
-        for i in range(1,4):
+    def _show_plots(self, histories, metric):
+        num_plots = len(histories) * 2
+        for i in range(3):
+            plt.figure()
+            plt.title(f"branch {i} metric")
 
-            plt.plot(history[f'multiply_{i}_{metric}'])
-            plt.plot(history[f'val_multiply_{i}_{metric}'])
-        
-        plt.plot(np.average(histories, axis=0).tolist())
-        plt.title(metric)
+            for history in histories:
+                history = history.history
+                if i > 0:
+                    plt.plot(history[f'multiply_{i}_{metric}'])
+                    plt.plot(history[f'val_multiply_{i}_{metric}'])
+                else:
+                    plt.plot(history[f'multiply_{metric}'])
+                    plt.plot(history[f'val_multiply_{metric}'])
+    
+            plt.ylabel(metric)
+            plt.xlabel('epoch')
+            plt.yticks(np.arange(0, 1.1, 0.1))
+            plt.xticks(np.arange(0, self.NUM_EPOCHS, 1.0))
+            plt.legend([f'train{i // 2}' if i % 2 == 0 else f'val{i // 2}' for i in range(num_plots)], loc='upper left')
+            plt.savefig(f"saved_graphs_multi_branch\\branch_{i}_{metric}.png", )
+    @property
+    def NUM_EPOCHS(self): return 3
+    def show_average_plots(self, histories, metric):
+        plt.figure()
+        plt.title(f"average {metric}")
+        num_plots = len(histories) * 2
+        for i, history in enumerate(histories):
+            history = history.history
+            val_histories = [history[f'val_multiply_{metric}']] + [history[f'val_multiply_{i}_{metric}'] for i in range(1,3)]
+            train_histories = [history[f'multiply_{metric}']] + [history[f'multiply_{i}_{metric}'] for i in range(1,3)]
+            val_average = np.average(val_histories, axis=0)
+            train_average = np.average(train_histories, axis=0)
+            plt.plot(val_average)
+            plt.plot(train_average)
+        plt.xticks(np.arange(0, self.NUM_EPOCHS, 1.0))
+        plt.yticks(np.arange(0, 1.1, 0.1))
         plt.ylabel(metric)
         plt.xlabel('epoch')
-        plt.legend([(f'train{i // 2}') if i % 2 == 0 else f'val{(i - 1)//2}' for i in range(8) ] + ['average_train', 'average_val'], loc='upper left')
-    def show_plots(self, history):
+        plt.legend([f'train{i // 2}' if i % 2 == 0 else f'val{i // 2}' for i in range(num_plots)], loc='upper left')
+        plt.savefig(f"saved_graphs_multi_branch\\average_{metric}.png")
+
+    
+    def show_plots(self, histories):
         #accuracy
-        self._show_plots(history, "mse")
-        plt.figure()
-        self._show_plots(history, "accuracy")
-        plt.show()
+        self._show_plots(histories, "custom_mse")
+        self.show_average_plots(histories, 'custom_mse')
+        #plt.figure()
+       # self._show_plots(histories, "accuracy")
+        #plt.show()
     def get_train_samples(self, filenames, size=1):
     
         numSamplesPerFile = 200
@@ -607,26 +537,45 @@ class agent(Agent):
                 #batch_s speed
         images= np.array(self.augmenter.aug(images))/255
         return ([images, np.array(speeds)/TARGET_SPEED, np.array(commands)], np.array(actions))
-    
+    @property
+    def BATCH_SIZE(self):
+        if self.debug_level == 1:
+            return DEBUG_BATCH_SIZE
+        elif self.debug_level == 0:
+            return 9
+        else:
+            return BATCH_SIZE
     def train(self):
-        # masks = np.array([[[0,0,0], [0,0,0], [0,0,0],[0,0,0]]])
-        # inverse_masks = masks + 100
-        # unpacked = [mask.reshape((1,3)) for mask in inverse_masks[0]]
         
-        # self.model.fit([np.random.uniform(0,2, (1,88,200,3)), np.random.uniform(0,10,(1,1)), masks], unpacked)
-        # # num_samples = round(TRAIN_BATCH_SIZE / 3)
+        best_val_loss_so_far = self.minimum_loss
+        history = self.model.fit(Generator(self.train_samples, self.BATCH_SIZE), batch_size=self.BATCH_SIZE, validation_data=Generator(self.val_data, is_val=True, num_train_samples=sum([len(samples) for samples in self.train_samples])), epochs=self.NUM_EPOCHS,
+         callbacks=[self.checkpoint, self.loss_hist, self.early_stopping])
+        self.minimum_loss = self.loss_hist.best_val_loss
+        if self.model.stop_training:
+            
+            print(f"stopped epoch: {self.early_stopping.stopped_epoch}")
+            print(f"current best: {self.early_stopping.best}")
+            print(f"baseline: {self.early_stopping.baseline}")
+            print(f"current best: {self.loss_hist.best_val_loss}")
+            
+            
+            self.model.stop_training = False
+        self.early_stopping = EarlyStopping(monitor ="val_loss",
+                                        restore_best_weights = True,
+                                        mode ="auto", patience=3, baseline=self.minimum_loss)
+        #if two values are the same it means the model has not improved at all
+        if self.minimum_loss == best_val_loss_so_far:
+            self.n_times_val_loss_no_update += 1
+            if self.n_times_val_loss_no_update == self.patience:
+                return False
+        else:
+            if not self.debug_level:
+                with open('min_loss.txt', 'w') as f:
+                    f.write(str(self.minimum_loss))
+                    
+        self.histories.append(history)
+        #self.show_plots(history) 
 
-        # self.model.evaluate([np.random.uniform(0,2, (1,88,200,3)), np.random.uniform(0,10,(1,1)), masks], unpacked)
-        train_data = load_data_2()
-        val_data = load_data_2(False)#self.get_samples(valFiles, n_val_samples, dict())
-        
-        #val_generators = [Generator(val_data[0], 40), Generator(val_data[1], 40), Generator(val_data[2], 40), Generator(val_data[3], 40)] 
-        #samples = self.get_samples(trainFiles, n_train_samples, dict())
-        
-        history = self.model.fit(Generator(train_data), batch_size=BATCH_SIZE, validation_data=Generator(val_data), epochs=10, callbacks=[self.early_stopping, self.checkpoint])
-        self.show_plots(history) 
-        import keras.backend as K
-        K.flatten()
         #self.show_graph([history], time.time() - s)
         # history = self.model.fit_generator(self.batch_generator(False, n_train_samples), steps_per_epoch=n_train_samples / 120,
         #     validation_steps=n_val_samples / 120, epochs=5, validation_data=self.batch_generator(True, n_val_samples),
@@ -635,7 +584,7 @@ class agent(Agent):
         
         #self.model.fit(x=train_samples[0], y=train_samples[1], batch_size=120, shuffle=True, validation_data=val_samples, epochs=50, callbacks=[self.early_stopping])
         print("num errors" + str(self.num_errors))
-       
+    
     
     def _show_graph(self, history, name):
         acc = [point for point in history.history[name]]
@@ -648,22 +597,20 @@ class agent(Agent):
         plt.legend(['train', 'val'], loc='upper left')
         
     def show_graph(self, histories, duration):
-        plt.title(f'{round(duration/3600, 2)} hrs' )
-        self._show_graph(histories[0], 'accuracy')
-        plt.figure()
-        plt.title(f'{round(duration/60, 2)} hrs' )
+        # plt.title(f'{round(duration/3600, 2)} hrs' )
+        # self._show_graph(histories[0], 'accuracy')
+        # plt.figure()
         self._show_graph(histories[0], 'loss')
-        plt.figure()
-        plt.title('hrs' )
+        
         self._show_graph(histories[0], 'mse')
         plt.show()
     def normalise_single_sample(self, image, speed, cmd, grayscale= False):
-        full_mask = np.ones((3,))
-        empty_mask = np.zeros((3,))
-        mask_types = [[full_mask, empty_mask, empty_mask, empty_mask], 
-                    [empty_mask, full_mask, empty_mask, empty_mask],
-                    [empty_mask, empty_mask, full_mask, empty_mask],
-                    [empty_mask, empty_mask, empty_mask, full_mask]]
+        ones_mask = [1.0,1.0,1.0]
+        zeros_mask = [0.0,0.0,0.0]
+        mask_types = [[ones_mask, zeros_mask, zeros_mask, zeros_mask], 
+                    [zeros_mask, ones_mask, zeros_mask, zeros_mask],
+                    [zeros_mask, zeros_mask, ones_mask, zeros_mask],
+                    [zeros_mask, zeros_mask, zeros_mask, ones_mask]]
 
         image = np.reshape(image, (1, IM_HEIGHT, IM_WIDTH, 1 if grayscale else 3)) / 255
         speed /= TARGET_SPEED
@@ -739,65 +686,23 @@ def test_show_graph():
     agt = agent(fake_training=True)
     show_accuracy_graph(histories)
 def test_insert():
-    agt = agent(fake_training=True)
-    img = np.random.uniform(0, 255, (88, 200, 3))
-    speed = 29
-    cmd = "straight"
-    action = [0, 1, 2]
-    for i in range(100):
+    agt = agent(debug_level=0, train_init_policy=False)
+    
+    for i in range(81):
+        
+        img = np.random.uniform(0, 255, (88, 200, 3)).astype('uint8')
+        speed = 29
+        cmd = i % 3 + 2 
+      
+        action = np.random.uniform(-1, 1, (3,)).tolist()
+
         agt.insert_input(img, speed, cmd, action)
 
     agt.train()
 def test_load_data():
     pass
-def print_weights(agent : agent, n):
-    weights = agent.model.get_weights()
-    
-    with open(f"keras weights before", "w") as f:
+#agent(1, True).train()
 
-        for i, w in enumerate(weights):
-            f.write(f"layer {i}\n")
-            f.write(str(w) + "\n")
-            f.write("\n")
+test_insert()
 
-class test_module:
-    def __init__(self):
-        inLayer = Input((3,3,1))
-    
-        temp = add_conv_block(inLayer, 25, 2, 1, "test_conv" )
-        temp = add_conv_block(temp, 25, 2, 1, "layer2")
-        temp = Flatten()(temp)
-        #temp = Dense(1)(temp)
 
-        temp = Dense(1, activation=None, use_bias=False)(temp)
-        temp2  = Dense(1, activation=None, use_bias=False)(temp)
-        self.model1 = Model(inLayer, temp)
-        f=r"checkpoints\test_weights.hdf5"
-        self.model2 = Model(inLayer, temp2)
-        self.model1.compile(loss='mse', optimizer='adam', 
-metrics=['accuracy'])
-        self.model2.compile(loss='mse', optimizer='adam', metrics='accuracy')
-        
-    def train(self):
-        print(self.model1.summary())
-
-        one = np.array([[0,0,1], [0,1,0], [1,0,0]])
-        two = np.array([[0,1,0], [0,1,0], [0,1,0]])
-        three = np.array([[1,0,0], [0,1,0], [0,0,1]])
-        
-        x = [one for i in range(5000)] + [two for i in range(5000)] + [three for one in range(5000)]
-        y = [0 + random.random() / 10.0 for i in range(5000)] + [1 + random.random() / 10.0 for i in range(5000)] + [2 + random.random() / 10.0 for one in range(5000)]
-        for i in range(15000 - 1):
-            ind = random.randint(i + 1, 15000 - 1)
-            x[i], x[ind] = x[ind], x[i]
-            y[i], y[ind] = y[ind], y[i]
-        x = np.array(x).reshape(len(x), 3,3,1)
-        y = np.array(y)
-        chkpt = ModelCheckpoint(os.path.join(CHECKPT_FOLDER_DIR, "test_weights.hdf5"), monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
-        print(self.model2.get_weights()[0])
-
-        self.model1.fit(x=x, y=y, batch_size=120, validation_split=0.2, epochs=1, verbose='0', shuffle=True, callbacks=[chkpt])
-        
-        print(self.model2.get_weights()[0])
-        print(self.model1.get_weights()[0])
-        print()
