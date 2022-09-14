@@ -13,8 +13,8 @@ def main(evaluate=False):
     
     
     env = CarEnv([0,0,0], [0], skip_turn_samples=True )
-    agent = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)), env=env,
-            n_actions=3, load_checkpoint=True)
+    agent = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)),
+            n_actions=3, load_checkpoint=False)
     n_games = 249
 
     figure_file = 'DDPG\plots\ddpg.png'
@@ -39,6 +39,8 @@ def main(evaluate=False):
     else:
         evaluate = False
     step_timer = time()
+    #TODO balance the number of left, straight and right turns
+    
     for i in range(n_games):
         observation, _ = env.reset1()
         #kickstart the vehicle
@@ -57,9 +59,6 @@ def main(evaluate=False):
             action = agent.choose_action(observation, evaluate)
         
             observation_, reward, done, info = env.step1(get_control(action))
-            
-            print(env.get_speed(), reward, done)
-            print()
 
             score += reward
             agent.remember(observation, action, reward, observation_, done)

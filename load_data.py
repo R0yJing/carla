@@ -22,11 +22,14 @@ def glob_sorter(item:str, len=5):
     return int(item[idx-len:idx])
 num_train_files = 0
 num_val_files = 0
-def load_data(load_train=True, debug=False):
+def load_data(load_train=True, debug=False, max_val_lim=None):
     global errors, num_train_files, num_val_files, DEBUG_BATCH_SIZE
 
     num_train_files = 22116 * 3 if not debug else 9
-    num_val_files = 24000 if not debug else 9
+    if max_val_lim is not None:
+        num_val_files = max_val_lim
+    else:
+        num_val_files = 24000 if not debug else 9
 
     commands_ct = [0,0,0,0]
 

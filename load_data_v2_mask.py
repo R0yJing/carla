@@ -32,7 +32,7 @@ def get_cmd(data):
         return 2
     else: return int(data['directions'])
 
-def load_data(load_train=True, debug_level=1):
+def load_data(load_train=True, debug_level=1, max_lim=None):
     commands_ct = [0,0,0,0]
 
     images = []
@@ -42,7 +42,10 @@ def load_data(load_train=True, debug_level=1):
     fin = False
     global errors, num_train_files, num_val_files, DEBUG_BATCH_SIZE, mask_types
     num_train_files = 22116 * 3
-    num_val_files = np.inf
+    if max_lim is not None:
+        num_val_files = max_lim
+    else:
+        num_val_files = 24000#num_train_files * .33 // 1
  
     if debug_level == 0:
         num_train_files = 9
@@ -51,8 +54,8 @@ def load_data(load_train=True, debug_level=1):
         num_samples  =DEBUG_BATCH_SIZE * 3
         images = [np.random.uniform(0, 255, (88, 200, 3)).astype('uint8') for _ in range( num_samples)]
         speeds = np.random.uniform(0, 30, (num_samples,)).tolist()
-        commands = [2 for i in range(DEBUG_BATCH_SIZE)] + [3 for i in range(DEBUG_BATCH_SIZE)] + [4 for i in range(DEBUG_BATCH_SIZE)]
-        actions = np.random.uniform((DEBUG_BATCH_SIZE, 3)).tolist()
+        commands = [2 for i in range(num_samples // 3)] + [3 for i in range(num_samples//3)] + [4 for i in range(num_samples // 3)]
+        actions = np.random.uniform(-1, 1, (num_samples, 3)).tolist()
         return images, speeds, commands, actions
 
     folder_names = []
@@ -92,11 +95,11 @@ def load_data(load_train=True, debug_level=1):
                         brake = data['brake']
                  
                        
-                        if load_train and sum(commands_ct) == num_train_files:
+                        if load_train and sum(commands_ct) >= num_train_files:
                              
                              fin = True
                              break
-                        if not load_train and sum(commands_ct) == num_val_files:
+                        if not load_train and sum(commands_ct) >= num_val_files:
                              #collected enough validation samples
                              fin = True
                              break
@@ -161,17 +164,18 @@ def load_data(load_train=True, debug_level=1):
         j += 1
     print(commands_ct)
     return shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions
-def load_data_2(load_train=True, debug_level=1):
-    shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions = load_data(load_train, debug_level)
+def load_data_2(load_train=True, debug_level=1, max_lim=None):
+    shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions = load_data(load_train, debug_level, max_lim=max_lim)
     # full_mask = np.ones((3,))
     # empty_mask = np.zeros((3,))
     # mask_types = [[full_mask, empty_mask, empty_mask], 
     #                 [empty_mask, full_mask, empty_mask],
     #                 [empty_mask, empty_mask, full_mask]]
-    f_samples = [(img, spd, cmd, act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions)]
-    l_samples = [(img, spd, cmd, act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions)]
-    r_samples = [(img, spd, cmd, act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions)]
+    f_samples = [(img, spd, cmd, act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions) if cmd == 2]
+    l_samples = [(img, spd, cmd, act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions) if cmd == 3]
+    r_samples = [(img, spd, cmd, act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions) if cmd == 4]
+    min_size = min(len(f_samples), len(l_samples), len(r_samples))
     #s_samples = [(img, spd, mask_types[3], act) for img, spd, cmd, act in zip(shuffled_images, shuffled_measurements, shuffled_cmds, shuffled_actions) if cmd == 3]
 #    min_l = min(len(f_samples), len(l_samples), len(r_samples), len(s_samples))
-    return f_samples, l_samples, r_samples
+    return f_samples[:min_size], l_samples[:min_size], r_samples[:min_size]
 

@@ -66,7 +66,7 @@ def get_img_array(idx):
     return img_array / 255.0
 
 class image_module:
-    def __init__(self):
+    def __init__(self ):
         #add 1) to denote working with a grayscale image =
         self.module_in = Input((IM_HEIGHT, IM_WIDTH,3))
         #base_layer filter kernsize  strides
@@ -198,7 +198,7 @@ class Generator(Sequence):
             random.shuffle(d)
 class agent(Agent): 
     
-    def __init__(self, debug=False, train_initial_policy=False, rl=False):
+    def __init__(self, debug=False, train_initial_policy=False, rl=False, max_val_lim=None):
         self.histories = []
         self.patience = 2
         
@@ -216,7 +216,7 @@ class agent(Agent):
         self.train_samples = [[],[],[]]
         self.debug = debug
         if not rl:
-            self.val_data = load_data(False, debug)#self.get_samples(valFiles, n_val_samples, dict())
+            self.val_data = load_data(False, debug, max_val_lim=max_val_lim)#self.get_samples(valFiles, n_val_samples, dict())
             
             if train_initial_policy:
                 self.train_samples = load_data_2(debug=debug)

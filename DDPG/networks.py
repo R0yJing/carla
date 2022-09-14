@@ -20,6 +20,7 @@ def normalize(state):
     vec_cmds = tf.stack([all_cmds[idx - 2] for idx in cmd_indices], 0)
 
     return images, speeds, vec_cmds
+
 def create_model(critic, fc1_dims=512, fc2_dims=512):
     img_module = image_module()
 
@@ -28,22 +29,23 @@ def create_model(critic, fc1_dims=512, fc2_dims=512):
    
     concat_layer = concatenate([img_module.module_out, spd_module.module_out, cmd_module.module_out])
     act_module = None
+
     if critic:
         act_module = mlp(3, "action")
-        concat_layer = concatenate([concat_layer, act_module.module_in])
+        concat_layer = concatenate([concat_layer, act_module.module_out])
     out = add_fc_block(concat_layer, fc1_dims, 'out0')
     out = add_fc_block(out, fc2_dims, 'out1')
-    out = Dense(3, None)(out)
-    # steer = tf.tanh(out[:, :1])
-    # throttle_brake = tf.sigmoid(out[:, 1:])
-    # out = tf.concat([steer, throttle_brake], axis=1)
 
-    # throttle_brake = Dense(2, activation='sigmoid')(out)
-    # out = tf.concat([steer, throttle_brake], axis=1)
-    if critic:
-        out = Dense(1, None)(out)
+    #all outputs are non-negative real numbers at this point
+    if not critic:
+        steer = Dense(1, activation='tanh')(out) #tf.tanh(out[:, :1])
+        throttle_brake = Dense(2, activation='sigmoid')(out)
+        out = tf.concat([steer, throttle_brake], axis=1)
+        return Model([img_module.module_in, spd_module.module_in, cmd_module.module_in], out)
+    else:
+        out = Dense(3, activation='linear')(out)
         return Model([img_module.module_in, spd_module.module_in, cmd_module.module_in, act_module.module_in], out)
-    return Model([img_module.module_in, spd_module.module_in, cmd_module.module_in], out)
+    
 
 class CriticNetwork(keras.Model):
     def __init__(self, fc1_dims=512, fc2_dims=512,
@@ -92,10 +94,5 @@ class ActorNetwork(keras.Model):
      
     def call(self, state):
         state = normalize(state)
+        
         return self.model([*state ])
-        # prob = self.fc1(state)
-        # prob = self.fc2(prob)
-
-        # mu = self.mu(prob)
-
-        # return mu

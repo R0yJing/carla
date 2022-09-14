@@ -4,10 +4,18 @@ from tensorflow.keras.optimizers import Adam
 from .buffer import ReplayBuffer
 from .networks import ActorNetwork, CriticNetwork
 from .utils import *
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+  try:
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+  except RuntimeError as e:
+    print(e)
+
 class Agent:
-    def __init__(self, input_dims, alpha=0.001, beta=0.002, env=None,
+    def __init__(self, input_dims, alpha=0.001, beta=0.002,
                  gamma=0.99, n_actions=3, max_size=1000000, tau=0.005,
-                 fc1=400, fc2=300, batch_size=66, noise=0.1, load_checkpoint=False):
+                 fc1=400, fc2=300, batch_size=64, noise=0.1, load_checkpoint=False):
         self.gamma = gamma
         self.tau = tau
         self.memory = ReplayBuffer(max_size, input_dims, n_actions)
@@ -18,6 +26,7 @@ class Agent:
         
         self.actor = ActorNetwork(n_actions=n_actions, name='actor')
         self.critic = CriticNetwork(name='critic')
+
         self.target_actor = ActorNetwork(n_actions=n_actions,
                                          name='target_actor')
         self.target_critic = CriticNetwork(name='target_critic')
@@ -30,8 +39,10 @@ class Agent:
         self.actor.built = True
         self.target_critic.built = True
         self.critic.built = True
-
+        self.r_plot = []
         self.update_network_parameters(tau=1)
+        if load_checkpoint:
+            self.load_models()
         
     def update_network_parameters(self, tau=None):
         if tau is None:
@@ -39,19 +50,18 @@ class Agent:
 
         weights = []
         targets = self.target_actor.get_weights()
+        print("actor weight set")
         for i, weight in enumerate(self.actor.get_weights()):
             weights.append(weight * tau + targets[i]*(1-tau))
         self.target_actor.set_weights(weights)
         weights = []
         targets = self.target_critic.weights
+        print("critic weight set")
         for i, weight in enumerate(self.critic.weights):
             weights.append(weight * tau + targets[i]*(1-tau))
+        
         self.target_critic.set_weights(weights)
-        w = self.target_actor.get_weights()
-        w1 = self.target_actor.model.get_weights()
-        for a0, a1 in zip(w, w1):
-            if (a0 != a1).any():
-                print("weights not equal")
+       
     
     def remember(self, state, action, reward, new_state, done):
         self.memory.store_transition(state, action, reward, new_state, done)
@@ -70,46 +80,21 @@ class Agent:
         self.critic.load_weights(self.critic.checkpoint_file)
         self.target_critic.load_weights(self.target_critic.checkpoint_file)
     def get_action(self, img, spd, cmd):
-
-        act = (self.choose_action((img, spd, cmd), True)).numpy()
+        
+        act = self.choose_action((img, spd, cmd), True)
         
         return act[0].item(), act[1].item(), act[2].item()
-        
+    
+   
 
     def choose_action(self, observation, evaluate=False):
         #state = tf.convert_to_tensor([observation], dtype=tf.float32)
         #call method will autom normalize the ob
         img, spd, cmd = observation
         actions = self.actor((tf.expand_dims(img, 0), tf.expand_dims(spd, 0), tf.expand_dims(cmd, 0)))
-        
-        _, _, cdir = observation
-        if not evaluate:
-            pass
-            # actions += tf.random.normal(shape=[self.n_actions],
-            #                             mean=0.0, stddev=self.noise)
-        
-        # note that if the env has an action > 1, we have to multiply by
-        # max action at some point
-
-        min_action = (-1, 0, 0)
-        max_action = (1, 1, 0)
-        # if cdir == 3:
-        #     #left 
-        #     min_action = (0, 0, 0)
-        #     max_action = (1, 1, 0)
-        # elif cdir == 4:
-        #     #right
-        #     min_action = (0, 0, 0)
-        #     max_action = (-1, 1, 0)
-        # else:
-        #     #straight
-        #     min_action = (-1, 0, 0)
-        #     max_action = (1, 1, 0)
-        
-        actions = tf.clip_by_value(actions, min_action, max_action )
-    
-
-        return actions[0]
+        action = actions[0].numpy()
+        action[2] = 0
+        return action
 
     def learn(self):
         if self.memory.mem_cntr < self.batch_size:
@@ -121,26 +106,31 @@ class Agent:
         new_img, new_speed, new_cmd = new_state
         states = (tf.convert_to_tensor(img, dtype=tf.float32), tf.convert_to_tensor(speed, dtype=tf.float32), tf.convert_to_tensor(cmd, dtype=tf.float32))
         states_ = (tf.convert_to_tensor(new_img, dtype=tf.float32), tf.convert_to_tensor(new_speed, dtype=tf.float32), tf.convert_to_tensor(new_cmd, dtype=tf.float32))
-        rewards = tf.convert_to_tensor(reward, dtype=tf.float32)
+        rewards = tf.reshape(tf.convert_to_tensor(reward, dtype=tf.float32), (-1, 1))
+        
         actions = tf.convert_to_tensor(action, dtype=tf.float32)
-
+        dones = done.reshape((-1, 1))
         with tf.GradientTape() as tape:
             target_actions = self.target_actor(states_)
-            critic_value_ = tf.squeeze(self.target_critic(
-                                states_, target_actions), 1)
-            critic_value = tf.squeeze(self.critic(states, actions), 1)
-            target = rewards + self.gamma*critic_value_*(1-done)
-            critic_loss = keras.losses.MSE(target, critic_value)
+            critic_value_ = self.target_critic(
+                                states_, target_actions)
+            critic_value = self.critic(states, actions)
+
+            target = rewards + self.gamma*critic_value_*(1-dones)
+            critic_loss = tf.reduce_mean(keras.losses.MSE(target, critic_value))
+         
     
         critic_network_gradient = tape.gradient(critic_loss,
                                                 self.critic.trainable_variables)
+        print(critic_network_gradient)
+        #trainable variables is the set of weights and biases
         self.critic.optimizer.apply_gradients(zip(
             critic_network_gradient, self.critic.trainable_variables))
 
         with tf.GradientTape() as tape:
             new_policy_actions = self.actor(state)
             actor_loss = -self.critic(states, new_policy_actions)
-            actor_loss = tf.math.reduce_mean(actor_loss)
+            actor_loss = tf.reduce_mean(actor_loss)
 
         actor_network_gradient = tape.gradient(actor_loss,
                                                self.actor.trainable_variables)
@@ -148,3 +138,25 @@ class Agent:
             actor_network_gradient, self.actor.trainable_variables))
 
         self.update_network_parameters()
+# def is_num(o):
+#     return type(o) == int
+# import keras.backend as K
+# import numpy as np
+# import tensorflow as tf
+# def mse(X, Y):
+#     if is_num(X[0]):
+#         return sum([(x - y)**2 for x, y in zip(X, Y)]) / len(X)
+#     else:
+
+#         return K.mean(np.array([mse(x, y) for x, y in zip(X, Y)]))
+    
+# def mse(X, Y):
+#     if is_num(X[0]):
+#         return sum([(x - y)**2 for x, y in zip(X, Y)]) / len(X)
+#     else:
+
+#         return tf.reduce_mean(np.array([mse(x, y) for x, y in zip(X, Y)]))
+# # x=[[[[3,2],[2, 4],[1, 5]], [[7,6],[7,2],[7,1]]]] 
+# # y=[[[[8,5],[2, 8],[8, 1]], [[7,6],[3,8],[9,-1]]]]
+# # print(mse(x, y))
+

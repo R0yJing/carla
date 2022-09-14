@@ -1,16 +1,19 @@
+from glob import glob
 from expert import Expert
-from neural_net_v2 import *
+#from neural_net_v2 import *
+
 from environment import CarEnv
 from constants import BENCHMARK_LIMIT, COLLISION_TIMEOUT, DEBUG_BENCHMARK_LIMIT, MIN_SPEED
 #from coil_agent.imitation_learning import ImitationLearning
 import carla
 import sys
-
+import random 
 #sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
 #from coiltraine_agent import *
 from DDPG.ddpg_tf2 import *
-
-from neural_net_v2 import agent
+from PIL import Image
+import time
+import os
 def infraction_occured(env : CarEnv):
     
     return not env.on_lane
@@ -25,22 +28,41 @@ def get_current_command_num(env : CarEnv):
   
     return 0
 
+def capture_scene(env : CarEnv, type, number, start_benchmark_time, max_files = 100):
+        
+        im = Image.fromarray(env.aerial_img)
+        hrs = int((time.time() - start_benchmark_time) // 3600)
+        mins = int(((time.time() - start_benchmark_time) % 3600) // 60)
+
+        secs = round(((time.time() - start_benchmark_time) % 60), 2)
+        im.save(f"scene captures\\{type}\\aerial_view_{number % max_files}_timestamp{hrs}_{mins}_{secs}.png")
+     
+
+        print(f"{type} captured!")
 def main():
     
     debug=False
+    #neural_net_v2
+    from neural_net_v2 import agent
+    baseline_agt = agent(True)
+
+    #neural_net_v4
+    #from neural_net_v4 import *
+    #baseline_agt = agent(None, False, max_val_lim=9)
     
-    #baseline_agt = agent(debug=True)
-    #baseline_agt = Agent()
+    #rl agent
+    # baseline_agt = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)),
+    #           n_actions=3, load_checkpoint=True)
+
     total_dist_travelled_per_ep = 0
     dist_per_episode = 1000
     counters = [0,0,0]
     traffic_light_counter = [0]
     debug = False
 
-    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=False, skip_turn_samples= True, port=2000)
-    baseline_agt = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)), env=env,
-             n_actions=3)
-    baseline_agt.load_models()
+    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=False, aerial_view=True, skip_turn_samples= True, port=2000)
+    
+    
     total_dist_travelled = 0
     missed_turns = 0
 
@@ -71,6 +93,7 @@ def main():
     
         fake_speed= 6
         s,t,b = baseline_agt.get_action(ob_front, fake_speed, env.current_direction)
+        
         infract_registered = False
         
         env.run_step(carla.VehicleControl(steer=s,throttle=t, brake=b))
@@ -97,6 +120,7 @@ def main():
                 print("overriding")
             else:
                 s,t,b = baseline_agt.get_action(ob_front, env.get_speed(), env.current_direction)
+                print(s,t,b)
                 if t > b:
                     b = 0
                 control = carla.VehicleControl(steer=s,throttle=t, brake=b)
@@ -109,6 +133,8 @@ def main():
                 if env.collision_timer is not None and not collided:
                     print("collision start")
                     collided = True
+                    
+                    capture_scene(env, "collisions", num_collisions, start)
                     num_collisions += 1
                 if infraction_occured(env) and not infract_registered:
                     fv = True
@@ -206,13 +232,13 @@ def main():
             #reached intermediate waypoint
             
             if env.missed_turn() and env.missed_turns_force_respawn_counter == 3:
-                
+                capture_scene(env, "missed turns", missed_turns, start)
                 print("missed a turn")
                 missed_turns_counter_per_ep += 1
                 infract_registered = False
                 collided = False
                 missed_turns += 1
-                
+            
 
                 #recovered form collision
             #timer will be reset to none only when collision timeout is exceeded

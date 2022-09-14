@@ -3,7 +3,8 @@ from environment import *
 from expert import Expert 
 from constants import *
 DATA_DIR = "some/dir"
-from neural_net_v2 import agent
+#from neural_net_v2 import agent
+from neural_net_v4 import agent
 import time
 from collections import deque
 import carla
@@ -21,22 +22,19 @@ class imitation_learning_trainer:
         self.counters = [0,0,0]
         self.debug = debug
         self.env = CarEnv(self.counters, self.num_obs_at_traffic_light_counter, training=True, port=2000, debugg=debug, skip_turn_samples=False)
-        #self.expert = Expert(self.env)
-        self.agent = agent(debug)
-   
+        #self.expert = Expert(self.env) 
+        self.agent = agent(None, max_val_lim=0)
+        self.collected_enough_samples()
     def DR(self, observation, iter, beta):
         ob, spd, cmd = observation 
-
-        s,t,_=self.agent.get_action(ob[0], spd, cmd)
         
-
-        if (beta * LAMBDA**iter >=  random.random()):
+        if (beta * (LAMBDA**iter) >=  random.random()):
             #print("switching to expert control")
             return self.expert.get_action()
         else:
             #print("switching to agent control")
             s,t,b=self.agent.get_action(ob[0], spd, cmd)
-            b = 0
+            
             return carla.VehicleControl(steer=s, throttle=t, brake=b)
       #  time.sleep(999)
     # def has_collected_enough_samples_per_episode(self):
@@ -74,8 +72,11 @@ class imitation_learning_trainer:
             #might not see the traffic light so theres no reason to stop
             self.agent.insert_input(imgs[1], speed, cmd, left_bias_action)
             self.agent.insert_input(imgs[2], speed, cmd, right_bias_action)
-            if self.env.autocar.get_traffic_light() != None:
-                self.env.traffic_light_counter[0] += 3
+            try:
+                if self.env.autocar.get_traffic_light() != None:
+                    self.env.traffic_light_counter[0] += 3
+            except:
+                pass
             #green or amber light
         
         else:
@@ -171,13 +172,15 @@ class imitation_learning_trainer:
         
         self.start_time = time.time()
         i = 0
-        while i < N_ITER:
+        while i < TOTAL_NUM_ITER:
             print(f"iteration {i}")
             self.sample_and_relabel_trajectory(i)
             if not self.agent.train():
                 break 
             i += 1
-        self.agent.show_graph()
+            
+        self.agent.show_plots()
+
         #self.show_statistics()
         
 

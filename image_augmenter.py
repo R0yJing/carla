@@ -1,7 +1,4 @@
-from time import time
 from imgaug import augmenters as iaa
-from torch import dtype
-import numpy as np
 class image_augmenter:
     '''augments images before storing them'''
     def __init__(self):
