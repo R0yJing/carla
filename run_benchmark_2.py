@@ -27,28 +27,45 @@ def get_current_command_num(env : CarEnv):
         return 1 if env.counters[1] < b_lim() else 2
   
     return 0
-
+import math
+import glob
 def capture_scene(env : CarEnv, type, number, start_benchmark_time, max_files = 100):
-        
+        #files = os.listdir(f"scene captures\\{type}")
+        files = glob.glob(f"scene captures\\{type}\\*")
+        num_files = len(files)
+        control = env.autocar.get_control()
+        s, t, b = control.steer, control.throttle, control.brake
+        s = round(s, 2)
+        t = round(t, 2)
+        b = round(b, 2)
+        v = env.autocar.get_velocity()
+
+        speed = math.sqrt(v.x**2 + v.y**2)
+
         im = Image.fromarray(env.aerial_img)
         hrs = int((time.time() - start_benchmark_time) // 3600)
         mins = int(((time.time() - start_benchmark_time) % 3600) // 60)
 
         secs = round(((time.time() - start_benchmark_time) % 60), 2)
-        im.save(f"scene captures\\{type}\\aerial_view_{number % max_files}_timestamp{hrs}_{mins}_{secs}.png")
-     
+        
+        if num_files >= max_files:
+            
+            os.remove(files[(num_files )% max_files])
+        file = f"scene captures\\{type}\\aerial_view_{num_files % max_files}_timestamp_{hrs}_{mins}_{secs}_steer_{s}_throttle_{t}_brake{b}_speed_{speed}.png"
+        im.save(file)
 
         print(f"{type} captured!")
+
 def main():
     
     debug=False
     #neural_net_v2
-    from neural_net_v2 import agent
-    baseline_agt = agent(True)
+    # from neural_net_v2 import agent
+    # baseline_agt = agent(True)
 
     #neural_net_v4
-    #from neural_net_v4 import *
-    #baseline_agt = agent(None, False, max_val_lim=9)
+    from neural_net_v4 import agent
+    baseline_agt = agent(None, False, max_val_lim=9)
     
     #rl agent
     # baseline_agt = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)),
@@ -84,6 +101,8 @@ def main():
     num_failures = 0
     total_dist_travelled_per_ep = 0
     total_time_elapsed = 0
+    num_collisions_files = len(glob.glob("scene captures\\collisions\\*"))
+    num_missed_turn_files = len(glob.glob("scene captures\\missed turns\\*"))
     for i in range(total_num_episodes):
         
         ((ob_front, _, _), _, _), done = env.reset()
@@ -244,7 +263,7 @@ def main():
             #timer will be reset to none only when collision timeout is exceeded
         
             if not done:
-                forced_update_targ = env.force_update_targ
+                
                 ((ob_front, _, _), _, _), done = env.run_step(control)
                 if expert.car_respawned():
                     expert = Expert(env)

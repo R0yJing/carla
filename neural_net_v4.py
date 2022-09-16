@@ -659,16 +659,16 @@ def show_test_plot(agt, key=0):
         plt.title("Throttle")
     else:
         plt.title("Brake")
-    for steers in [s_steers]:#, l_steers, r_steers]:
+    for steers in [s_steers, l_steers, r_steers]:
         plt.plot(steers)
-    for acts in (s_act,):#, l_act, r_act):
+    for acts in (s_act, l_act, r_act):
         plt.plot(acts)
 
-    plt.legend(["straight", "left", "right", "straight'", "left'", "right'"])
+    plt.legend(["straight steer", "left steer", "right steer", "straight' steer", "left' steer", "right' steer"])
     plt.show()
-
-    for s in [l_steers, s_steers, r_steers]:
-        print(np.average(s))
+    return
+    # for s in [l_steers, s_steers, r_steers]:
+    #     print(np.average(s))
 def test_val_net4(key=0):
 
     agt = agent(max_val_lim=DEBUG_BATCH_SIZE*3)
@@ -692,7 +692,7 @@ def test_val_ddpg():
     agt.val_data = load_data_2(load_train=False, max_lim=DEBUG_BATCH_SIZE * 3)
     show_test_plot(agt)
 #test_val_ddpg()
-#test_val_net4(0)
+test_val_net4(0)
 #test_train()
 #test_insert()
 #test_val_net4()

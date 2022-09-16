@@ -47,7 +47,7 @@ class CarEnv:
         #self.tm = self.cl.get_trafficmanager(8000)
         self.preferred_direction = 3
         self.sps = self.w.get_map().get_spawn_points()
-        #self.cleanup()
+        self.cleanup()
         self.autocar = None
         self.spectator = self.w.get_spectator()
         self.front_camera = None
@@ -477,6 +477,8 @@ class CarEnv:
         #self.w.debug.draw_string(loc + self.autocar.get_location(), "x", life_time=60)
         self.collision_sensor = self.w.spawn_actor(collision_sensor_bp, carla.Transform(carla.Location(x=2.5, z=0.7)), attach_to=self.autocar)
         self.sensors = [self.camera, self.left_camera, self.right_camera, self.collision_sensor, self.obs_sensor, self.lane_inv_sensor]
+        if self.get_aerial_view:
+            self.sensors.append(self.aerial_view_cam)
         self.obs_sensor.listen(self.process_obs)
         self.collision_sensor.listen(lambda event : self.process_collision(event))
         self.traffic_jam = False
@@ -857,7 +859,8 @@ class CarEnv:
         prev_dir = self.target_loc - self.source_loc
         self.time_counter += time.time() - self.waypoint_timer
         self.waypoint_timer = time.time()
-        
+        if self.missed_turns_force_respawn_counter > 0:
+            self.missed_turns_force_respawn_counter = 0
         if self.preferred_direction != None:
             print("updating target")
             self.source_loc = self.target_loc
@@ -942,10 +945,10 @@ class CarEnv:
             if not self.traffic_jam and not self.autocar.is_at_traffic_light():
                 
                 return True 
-            #it is abnormal to wait for that long for a traffic jam
+            #it is unacceptable to wait for that long for a traffic jam
             elif time.time() - self.waypoint_timer > 30 and self.collected_enough_turn_samples:
                 return True
-        
+            
             elif time.time() - self.waypoint_timer > 60 and not self.collected_enough_turn_samples:
                 return True
         return False
@@ -957,10 +960,10 @@ class CarEnv:
         current_wp = self.current_wp
         self.override_target  =None
         if (self.current_wp.lane_id != self.target_wp.lane_id and self.current_wp.lane_id != self.source_wp.lane_id):
-                current_wp = self.current_wp.get_right_lane()
-                
-                if current_wp is None:
-                    return False
+            current_wp = self.current_wp.get_right_lane()
+            
+            if current_wp is None:
+                return False
         print("reset src tg success!")  
        
         self.target_loc = current_wp.transform.location
@@ -1178,12 +1181,7 @@ class CarEnv:
             else:
                 self.target_updated = True
                 self.reset_source_and_target()
-        elif round(self.get_speed(), 2) == 0:
-            if time.time() - self.stop_moving_timer > 10:
-                done = True
-            elif not self.kickstarted:
-                self.kickstart()
-
+        
                 #self.sensor_active = True
                 # if self.get_speed() == 0 and time.time() - self.waypoint_timer > WAYPOINT_TIMEOUT *2:
                 #     done = True
@@ -1251,17 +1249,13 @@ class CarEnv:
                         
                         #vehicle has wasted the 3 chances given to make the turn properly, therefore manual override
                         if not self.force_update_location():
-                            
                             done = True
                             
 
                     
         if not self.force_update_targ and self.missed_non_turn():
             print("missed non turn")
-            front_img, left_img, right_img = self.front_camera, self.left_camera, self.right_camera
-
             if not self.reset_source_and_target():
-                
                 done = True
 
         # elif self.missed_non_turn():
@@ -1293,7 +1287,8 @@ class CarEnv:
 
         print("loc force updated")
         if self.force_respawn_at_target_loc():
-
+            #reset this counter as we have forcefully updated the target location
+            self.missed_turns_force_respawn_counter = 0
 
             # success = False
             # while time.time() - s < timeout:
@@ -1315,6 +1310,8 @@ class CarEnv:
         return False
     
     def force_respawn_at_last_chkpt(self):
+        '''this function will be called in the case of a missed turn (to give the vehicle another two chances
+        to make the turn properly'''
         return self.force_respawn_at_chkpt(self.source_loc)
     def force_respawn_at_chkpt(self, loc):
         if self.missed_turns_force_respawn_counter == 3:
@@ -1462,8 +1459,8 @@ class CarEnv:
             self.right_camera = i3
         else:
             self.aerial_img = i3
-            cv2.imshow("aerial", i3)
-            cv2.waitKey(1)
+            # cv2.imshow("aerial", i3)
+            # cv2.waitKey(1)
 
         #wait for the least amount of time possible
         # if sensor_id == 0:
