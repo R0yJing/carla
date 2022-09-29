@@ -14,6 +14,7 @@ import math
 import os
 # from form_loop import form_loop, set_target, set_world
 from agents.navigation.controller import VehiclePIDController
+
 class StartEndPair:
     '''this class is for storing the start and end position of a "turn" '''
     def __init__(self, start, end):
@@ -47,7 +48,7 @@ class CarEnv:
         #self.tm = self.cl.get_trafficmanager(8000)
         self.preferred_direction = 3
         self.sps = self.w.get_map().get_spawn_points()
-        self.cleanup()
+        #self.cleanup()
         self.autocar = None
         self.spectator = self.w.get_spectator()
         self.front_camera = None
@@ -62,8 +63,10 @@ class CarEnv:
         self.stop = False
         # self.min_action = (-1, 0, 0)
         # self.max_action = (1, 1, 1)
-        #self.tm = self.cl.get_trafficmanager(8000)
+        self.tm = None
         self.spawn_vehicle()
+        self.generate_traffic()
+
         self.car_length, self.car_width, self.car_height = self.car_dim_info(self.autocar)
         self.wps_close_to_traffic_lights = None #self.get_waypoints_close_to_traffic_lights()
         print("environment initialised!")
@@ -402,21 +405,19 @@ class CarEnv:
 
 
     def spawn_vehicle(self, ignore_lights = True, spawn_trans=None):
+        print("spawning vehicle")
         if self.autocar is not None and self.autocar.is_alive:
             
             self.destroy_car()
         
         model_3 = self.w.get_blueprint_library().filter("vehicle.ford.mustang")[0]
         if spawn_trans is None:
+            i = 0
             while True:
-                i = 0
+                
                 try:
                     print("trying to respawn")
                     trans = random.choice(self.sps)
-                    #trans = self.get_wp_from_loc(trans.location).transform
-                    #wp = self.get_wp_from_loc(trans.location)
-                    #DO NOT set source loc here
-                    #self.source_loc = wp.transform.location
                     if self.in_proximity(trans.location):
                         print("random sp occupied")
                         continue
@@ -427,8 +428,6 @@ class CarEnv:
 
                     break
                 except Exception as e: 
-                
-                    (f"attempting to spawn {i}")
                     i+=1
                     time.sleep(0.05)
         else:
@@ -724,10 +723,8 @@ class CarEnv:
             self.cl.apply_batch([carla.command.DestroyActor(x) for x in [actor for actor in list(filter(
                 lambda x: isinstance(x, carla.Vehicle), self.w.get_actors()))]])
              
-            ("clean up successful")
         except Exception as e:
-            ("cannot destroy all actors")
-            (e)
+            pass
     
     def car_dim_info(self, car):
         bbox = car.bounding_box
@@ -791,6 +788,54 @@ class CarEnv:
     def distance_from_lane_centre(self):
         return self.dist_between_transform(self.lane_wp.transform, self.autocar.get_transform())        
         
+    def generate_traffic(self):
+        
+        return 
+        def choice(bps):
+            return bps[random.randint(0, len(bps))]
+        if self.tm is None:
+            self.tm = self.cl.get_trafficmanager(8000)
+        vehicle_bps = self.w.get_blueprint_library().filter("*vehicle*")
+        walker_bps = self.w.get_blueprint_library().filter("walker*")
+        spawned_walkers = []
+        spawned_cars = []
+        sp_offset = dict()
+        for sp in self.sps:
+            sp_offset[sp] = 0.1
+        vehicle_bps[0]
+        for i in range(30):
+            bp = choice(vehicle_bps)
+            sp = self.sps[i % len(self.sps)]
+            loc = sp.location
+
+
+            
+            
+            while True:
+                try:    
+                    wp = random.choice(self.get_wp_from_loc(loc).next(sp_offset[sp]))
+                    car = self.w.spawn_actor(bp, wp.transform)
+                    spawned_cars.append(car)
+                except Exception as e:
+                    sp_offset[sp] = sp_offset[sp] + 3
+
+            
+        for i in range(5):
+            while True:
+                sp = self.sps[(30 + i) % len(self.sps)]
+                try:
+                    
+                    wp = random.choice(self.get_wp_from_loc(loc).next(sp_offset[sp]))
+                    bp = choice(walker_bps)
+
+                    pedestrian = self.w.spawn_actor(walker_bps, sp_offset[sp])
+                    spawned_walkers.append(pedestrian)
+                except:
+                    sp_offset[sp] = sp_offset[sp] + 3
+        for obj in spawned_walkers + spawned_cars:
+            obj.set_autopilot(True, 8000)
+        print("spawn complete!")
+
 
     def get_dist_between_src_dest(self):
         return self.dist_between_transform(self.source_wp.transform, self.target_wp.transform)
@@ -937,15 +982,16 @@ class CarEnv:
     def set_guideline_control(self, control):
         self.guideline_control = control
     def timedout(self):
-        #just to be safe.
-    
-        if time.time() - self.waypoint_timer > WAYPOINT_TIMEOUT * (1.5 if self.use_baseline else 1):
-            #self.tlight is not None or
+        #if the vehicle is currently being re-located for missing a turn,
+        #then it is natural that the time to reach the goal is taking longer, therefore
+        #do not use the normal time constraint
+
+        if time.time() - self.waypoint_timer > WAYPOINT_TIMEOUT * (1 + self.missed_turns_force_respawn_counter):
             
             if not self.traffic_jam and not self.autocar.is_at_traffic_light():
                 
                 return True 
-            #it is unacceptable to wait for that long for a traffic jam
+            #it is unacceptable to wait for that long for a traffic jam or stopping at a tlight
             elif time.time() - self.waypoint_timer > 30 and self.collected_enough_turn_samples:
                 return True
             
@@ -1072,7 +1118,41 @@ class CarEnv:
         s = time.time()
         while time.time() - s < duration:
             self.step1(carla.VehicleControl(steer=0, throttle=1, brake=0))
-            
+    def destroy_traffic(self):
+        vehicles_ids = [obj.id for obj in self.w.get_actors() if isinstance(obj, carla.Vehicle) and obj.id != self.autocar.id]
+        walker_controllers = [obj for obj in self.w.get_actors() if isinstance(obj, carla.WalkerAIController)]
+        walker_ids = [obj.id for obj in self.w.get_actors() if isinstance(obj, carla.Walker)]
+   
+        # stop walker controllers (list is [controller, actor, controller, actor ...])
+        for controller in walker_controllers:
+            controller.stop()
+        self.cl.apply_batch([carla.command.DestroyActor(x) for x in vehicles_ids])
+        self.cl.apply_batch([carla.command.DestroyActor(x) for x in walker_controllers])
+        self.cl.apply_batch([carla.command.DestroyActor(x) for x in walker_ids])
+        
+        cars = [actor for actor in self.w.get_actors() if isinstance(actor, carla.Vehicle)]
+        for car in cars:
+            car.destroy()
+        cars = [actor for actor in self.w.get_actors() if isinstance(actor, carla.Vehicle)]
+        walkers = [actor for actor in self.w.get_actors() if isinstance(actor, carla.Walker)]
+        assert len(cars) == 1 and len(walkers) == 0
+        
+        # cars = [obj for obj in self.w.get_actors() if isinstance(obj, carla.Vehicle) and obj.id != self.autocar.id]
+        #
+        
+        # for controller in walker_controllers:
+        #     try:
+        #         controller.stop()
+        #     except:
+        #         pass
+
+        
+        # self.cl.apply_batch([carla.command.DestroyActor(x) for x in walker_controllers])
+        # self.cl.apply_batch([carla.command.DestroyActor(x) for x in walker_ids])
+        # assert self.autocar.is_alive
+
+        print("all actors except self destroyed")
+
     def reset1(self):
         self._reset()
         self.set_route()
@@ -1158,7 +1238,7 @@ class CarEnv:
             - abs(s* self.distance_from_lane_centre)
 
     def run_step(self, control):
-      
+
         self.view_spectator_fps()
         
         if not self.on_lane and time.time() - self.last_lane_invasion_timer > LANE_INV_TIMEOUT:
@@ -1173,7 +1253,7 @@ class CarEnv:
                 done = True
         
         
-        elif self.collision_timer is None and self.timedout() and not self.force_update_targ and self.missed_turns_force_respawn_counter == 0:
+        elif self.collision_timer is None and self.timedout() and not self.force_update_targ:
             if not self.has_collected_enough_turn_samples() or self.get_speed() < MIN_SPEED:
                 print("timed out, replanning route")
             
@@ -1234,24 +1314,23 @@ class CarEnv:
         #         print("over turned")
         if self.missed_turn():
                 
-                    if self.training:
-                        if self.has_collected_enough_turn_samples():
-                        
-                
-                            if not self.reset_source_and_target():
-                                print("cannot reset source targ")
-                                done = True
-                        else:
-                            done = True
-                
+            if self.training:
+                if self.has_collected_enough_turn_samples():
+                    if not self.reset_source_and_target():
+                        print("cannot reset source targ")
+                        done = True
+                else:
+                    done = True
+        
 
-                    elif not self.force_respawn_at_last_chkpt():
-                        
-                        #vehicle has wasted the 3 chances given to make the turn properly, therefore manual override
-                        if not self.force_update_location():
-                            done = True
-                            
-
+            elif not self.force_respawn_at_last_chkpt():
+                
+                #vehicle has wasted the 3 chances given to make the turn properly, therefore manual override
+                if not self.force_update_location():
+                    done = True
+                else:
+                    assert not self.missed_turn()
+            else: assert not self.missed_turn()
                     
         if not self.force_update_targ and self.missed_non_turn():
             print("missed non turn")
@@ -1281,24 +1360,15 @@ class CarEnv:
         # self.cl.apply_batch([
         #         carla.command.DestroyActor(x) for x in self.sensors])
         
-    def force_respawn_at_target_loc(self):
-        return self.force_respawn_at_chkpt(self.target_loc)
     def force_update_location(self):
 
-        print("loc force updated")
-        if self.force_respawn_at_target_loc():
+        if self.force_respawn_at_chkpt(self.target_loc):
+            if self.debug:
+                print("location force updated")
             #reset this counter as we have forcefully updated the target location
-            self.missed_turns_force_respawn_counter = 0
-
-            # success = False
-            # while time.time() - s < timeout:
-            #     if not self.in_proximity(self.target_wp.transform.location):
-            #         success = True
-            #         self.autocar.set_transform(self.target_wp.transform)
-            #         print("trying to force teleport")
-            #         break
-                
-            
+            #self.missed_turns_force_respawn_counter = 0
+            self.update_target()
+        
             self.w.debug.draw_string(self.source_loc, "source loc", life_time=10)
             self.w.debug.draw_string(self.target_loc, "target loc", life_time = 10)
 
@@ -1311,17 +1381,19 @@ class CarEnv:
     
     def force_respawn_at_last_chkpt(self):
         '''this function will be called in the case of a missed turn (to give the vehicle another two chances
-        to make the turn properly'''
-        return self.force_respawn_at_chkpt(self.source_loc)
-    def force_respawn_at_chkpt(self, loc):
+        to make the turn properly)'''
+        if self.debug:
+            print("respawning at last checkpoint...")
         if self.missed_turns_force_respawn_counter == 3:
             return False
+        return self.force_respawn_at_chkpt(self.source_loc)
+    def force_respawn_at_chkpt(self, loc):
+        
         #wait for the traffic to pass, then spawn when there is a chance
         if self.in_proximity(loc):
-            destroyed = True
             self.destroy_car()
         temp = self.missed_turns_force_respawn_counter + 1
-        #sourceloc still exists after reset
+        #source_loc and target_loc still remain unchanged
         self._reset()
         self.missed_turns_force_respawn_counter = temp
         ##################
@@ -1333,9 +1405,12 @@ class CarEnv:
         else:
             
             s = time.time()
+
             while not self.autocar.is_alive and time.time() - s < MAX_TIMEOUT:
                 try:
                     if self.in_proximity(loc):
+                        #patiently wait for 30 seconds for the traffic to pass,
+                        #so that the car can spawn at the source location
                         continue
                     #TODO cannot directly spawn (set transform)
                     self.autocar = None
@@ -1358,10 +1433,6 @@ class CarEnv:
         time.sleep(0.5)
         self.collision_timer = None
         self.sensor_active = True
-    
-        if self.current_direction == 3 or self.current_direction == 4:
-            self.waypoint_timer += 1
-
         assert self.source_wp != None and self.target_wp != None
         
         return success
@@ -1526,3 +1597,4 @@ class CarEnv:
 #         else:
 #             start = time.time()
 #     time.sleep(0.1)
+#CarEnv(None, None, False)

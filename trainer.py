@@ -1,4 +1,5 @@
 from itertools import count
+from threading import Thread
 from environment import *
 from expert import Expert 
 from constants import *
@@ -9,6 +10,12 @@ import time
 from collections import deque
 import carla
 from lateral_augmentations import augment_steering
+from generate_traffic_helper import *
+def tick(world):
+    print("init ticking")
+    while True:
+        world.tick()
+
 class imitation_learning_trainer:
     def __init__(self, debug=False):
         #disable the timeout when trainingself.left_turns_counter = 0
@@ -23,8 +30,8 @@ class imitation_learning_trainer:
         self.debug = debug
         self.env = CarEnv(self.counters, self.num_obs_at_traffic_light_counter, training=True, port=2000, debugg=debug, skip_turn_samples=False)
         #self.expert = Expert(self.env) 
-        self.agent = agent(None, max_val_lim=0)
-        self.collected_enough_samples()
+        self.agent = agent(None)
+  
     def DR(self, observation, iter, beta):
         ob, spd, cmd = observation 
         
@@ -110,10 +117,12 @@ class imitation_learning_trainer:
     def reset_counters(self):
         for i in range(len(self.counters)):
             self.counters[i] = 0
+    def kill_traffic(self):
+        self.env.destroy_traffic()
+
     def sample_and_relabel_trajectory(self, i_iter):
         
-        if i_iter > 0:
-            self.env.set_autopilot(False)
+        
         ob, done = self.env.reset()
         self.reset_counters()
         #next target already set
@@ -131,7 +140,7 @@ class imitation_learning_trainer:
         while (not self.collected_enough_samples()):
             # print(f"orientation {self.env.orientation_wrt_road}")
             # print(f"dist {self.env.abs_distance_from_lane_edge}")
-            
+
             preferred_turn = self.counters.index(min(self.counters)) + 2
 
             drive_action = self.DR(ob, i_iter, beta)
@@ -165,20 +174,30 @@ class imitation_learning_trainer:
 
                 self.start_time = time.time()
         self.env.teleport()
+        print("destroying traffic")
+        
 
-        self.env.set_autopilot(True)
+        #self.env.set_autopilot(True)
     #path is the rollout of the current policy
     def main_loop(self):
         
+        
         self.start_time = time.time()
         i = 0
+        ticker = Thread(target=tick, args=[self.env.w], daemon=True)
+        ticker.start()
         while i < TOTAL_NUM_ITER:
+            generate_traffic()
             print(f"iteration {i}")
+           
             self.sample_and_relabel_trajectory(i)
+            kill_traffic()
             if not self.agent.train():
                 break 
+
             i += 1
             
+        ticker.join()
         self.agent.show_plots()
 
         #self.show_statistics()

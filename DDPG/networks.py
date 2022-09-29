@@ -31,8 +31,8 @@ def create_model(critic, fc1_dims=512, fc2_dims=512):
     act_module = None
 
     if critic:
-        act_module = mlp(3, "action")
-        concat_layer = concatenate([concat_layer, act_module.module_out])
+        act_input = Input((3, ))
+        concat_layer = concatenate([concat_layer, act_input])
     out = add_fc_block(concat_layer, fc1_dims, 'out0')
     out = add_fc_block(out, fc2_dims, 'out1')
 
@@ -44,7 +44,7 @@ def create_model(critic, fc1_dims=512, fc2_dims=512):
         return Model([img_module.module_in, spd_module.module_in, cmd_module.module_in], out)
     else:
         out = Dense(3, activation='linear')(out)
-        return Model([img_module.module_in, spd_module.module_in, cmd_module.module_in, act_module.module_in], out)
+        return Model([img_module.module_in, spd_module.module_in, cmd_module.module_in, act_input], out)
     
 
 class CriticNetwork(keras.Model):

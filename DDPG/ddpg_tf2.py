@@ -13,9 +13,9 @@ if gpus:
     print(e)
 
 class Agent:
-    def __init__(self, input_dims, alpha=0.001, beta=0.002,
+    def __init__(self, input_dims, alpha=0.001, beta=0.0001,
                  gamma=0.99, n_actions=3, max_size=1000000, tau=0.005,
-                 fc1=400, fc2=300, batch_size=64, noise=0.1, load_checkpoint=False):
+                 fc1=400, fc2=300, batch_size=128, noise=0.1, load_checkpoint=False):
         self.gamma = gamma
         self.tau = tau
         self.memory = ReplayBuffer(max_size, input_dims, n_actions)
@@ -30,7 +30,9 @@ class Agent:
         self.target_actor = ActorNetwork(n_actions=n_actions,
                                          name='target_actor')
         self.target_critic = CriticNetwork(name='target_critic')
-        
+        #actor should learn faster than critic as more accurate critic network
+        #should be used later during training
+
         self.actor.compile(optimizer=Adam(learning_rate=alpha))
         self.critic.compile(optimizer=Adam(learning_rate=beta))
         self.target_actor.compile(optimizer=Adam(learning_rate=alpha))
@@ -75,10 +77,13 @@ class Agent:
 
     def load_models(self):
         print('... loading models ...')
-        self.actor.load_weights(self.actor.checkpoint_file)
-        self.target_actor.load_weights(self.target_actor.checkpoint_file)
-        self.critic.load_weights(self.critic.checkpoint_file)
-        self.target_critic.load_weights(self.target_critic.checkpoint_file)
+        try:
+            self.actor.load_weights(self.actor.checkpoint_file)
+            self.target_actor.load_weights(self.target_actor.checkpoint_file)
+            self.critic.load_weights(self.critic.checkpoint_file)
+            self.target_critic.load_weights(self.target_critic.checkpoint_file)
+        except:
+            print("cannot load model!")
     def get_action(self, img, spd, cmd):
         
         act = self.choose_action((img, spd, cmd), True)

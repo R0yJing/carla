@@ -52,21 +52,10 @@ def add_conv_block(base_layer, filters, kern_size, strides, name, dropout=0.2):
     temp = tf.keras.layers.BatchNormalization()(temp)
     temp = Activation('relu')(temp)
     return temp
-def get_img_array(idx):
-    #print(dog_dir[idx])
-    img_array = cv2.imread(os.path.join(r".\PetImages", "Dog", dog_dir[idx]), cv2.IMREAD_GRAYSCALE)
-    #if idx ==0:
-        #cv2.imshow("", img_array)
-    #cv2.imshow("",img_array)
-    img_array.resize((IM_HEIGHT, IM_WIDTH))
-    
-    #img_array = img_array.reshape(-1)
-    #print("shpape of image")
-    #print(img_array.shape)
-    return img_array / 255.0
+
 
 class image_module:
-    def __init__(self ):
+    def __init__(self):
         #add 1) to denote working with a grayscale image =
         self.module_in = Input((IM_HEIGHT, IM_WIDTH,3))
         #base_layer filter kernsize  strides

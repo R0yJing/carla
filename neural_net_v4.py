@@ -167,7 +167,7 @@ class LossHistory(Callback):
         self.n_times_val_loss_no_update = 0
         self.stop_training = False
         self.debug_level = debug_level
-        self.patience = 2
+        self.patience = 4
     
         self.checkpoint_path = checkpoint_path if not self.debug_level else CHECKPT_FOLDER_DIR + "\\weights_multi_branch_debug.hdf5"
 
@@ -285,8 +285,10 @@ class agent:
     
     def try_load_model(self):
         
-        files = glob.glob(CHECKPT_FOLDER_DIR + "\\weights_multi_branch*")
-        checkpoint_file = None
+        files = glob.glob(CHECKPT_FOLDER_DIR + "\\weights_multi_branch.hdf5")
+        #checkpoint_file = CHECKPT_FOLDER_DIR + "\\weights_multi_branch_0.5256397128105164.hdf5"
+
+        
         for file in files:
             if not self.debug_level and not "debug" in file:
                 checkpoint_file = file
@@ -386,7 +388,8 @@ class agent:
     
             plt.ylabel(metric)
             plt.xlabel('epoch')
-            plt.yticks(np.arange(0, 1.1, 0.1))
+        
+            plt.yticks(np.arange(0, 0.7, 0.1))
             plt.xticks(np.arange(0, self.NUM_EPOCHS, 1.0))
             plt.legend([f'train{i // 2}' if i % 2 == 0 else f'val{i // 2}' for i in range(num_plots)], loc='upper left')
             plt.savefig(f"saved_graphs_multi_branch\\branch_{i}_{metric}.png", )
@@ -538,6 +541,7 @@ class agent:
     def normalise_single_sample(self, image, speed, cmd, grayscale= False):
         ones_mask = [1. ,1., 1.]
         zeros_mask = [0.,0.,0.]
+        #can resize
         mask_types = [[ones_mask, zeros_mask, zeros_mask], 
                     [zeros_mask, ones_mask, zeros_mask],
                     [zeros_mask, zeros_mask, ones_mask]]
@@ -692,7 +696,7 @@ def test_val_ddpg():
     agt.val_data = load_data_2(load_train=False, max_lim=DEBUG_BATCH_SIZE * 3)
     show_test_plot(agt)
 #test_val_ddpg()
-test_val_net4(0)
+#test_val_net4(0)
 #test_train()
 #test_insert()
 #test_val_net4()

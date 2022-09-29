@@ -8,8 +8,7 @@ from constants import BENCHMARK_LIMIT, COLLISION_TIMEOUT, DEBUG_BENCHMARK_LIMIT,
 import carla
 import sys
 import random 
-#sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
-#from coiltraine_agent import *
+
 from DDPG.ddpg_tf2 import *
 from PIL import Image
 import time
@@ -57,19 +56,24 @@ def capture_scene(env : CarEnv, type, number, start_benchmark_time, max_files = 
         print(f"{type} captured!")
 
 def main():
-    
+
     debug=False
     #neural_net_v2
+
     # from neural_net_v2 import agent
     # baseline_agt = agent(True)
 
     #neural_net_v4
-    from neural_net_v4 import agent
-    baseline_agt = agent(None, False, max_val_lim=9)
+    # from neural_net_v4 import agent
+    # baseline_agt = agent(None, False, max_val_lim=0)
     
     #rl agent
     # baseline_agt = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)),
     #           n_actions=3, load_checkpoint=True)
+
+    sys.path.append(r"C:\Users\autpucv\Documents\coiltraine-master\coiltraine-master")
+    from coiltraine_agent import Agent
+    baseline_agt = Agent()
 
     total_dist_travelled_per_ep = 0
     dist_per_episode = 1000
@@ -77,7 +81,7 @@ def main():
     traffic_light_counter = [0]
     debug = False
 
-    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=False, aerial_view=True, skip_turn_samples= True, port=2000)
+    env = CarEnv(counters, traffic_light_counter, training=False, debugg=debug, use_baseline_agent=True, aerial_view=True, skip_turn_samples= True, port=2000)
     
     
     total_dist_travelled = 0
@@ -97,12 +101,10 @@ def main():
     total_turn_timer = -1
     
     reached_dest = False
-    added_to_acc_dist = False
     num_failures = 0
     total_dist_travelled_per_ep = 0
     total_time_elapsed = 0
-    num_collisions_files = len(glob.glob("scene captures\\collisions\\*"))
-    num_missed_turn_files = len(glob.glob("scene captures\\missed turns\\*"))
+    env.cl.start_recorder("benchmark_recording.log")
     for i in range(total_num_episodes):
         
         ((ob_front, _, _), _, _), done = env.reset()
@@ -126,8 +128,7 @@ def main():
         total_dist_travelled_per_ep = 0
         override = False
         override_timer = None 
-        total_override_time = 0
-        
+        stop_moving_timer = None
         print("#######################")
         print(f"episode {i}")
         
@@ -139,13 +140,25 @@ def main():
                 print("overriding")
             else:
                 s,t,b = baseline_agt.get_action(ob_front, env.get_speed(), env.current_direction)
-                print(s,t,b)
+                
                 if t > b:
                     b = 0
                 control = carla.VehicleControl(steer=s,throttle=t, brake=b)
-            
+            if round(env.get_speed(), 2) == 0 and stop_moving_timer is None:
+                stop_moving_timer = time.time()
+            elif round(env.get_speed(), 2) > 1:
+                stop_moving_timer = None
+
+
             reached_dest = env.reached_dest()
+            if stop_moving_timer is not None and time.time() - stop_moving_timer > 5:
+                override = True
+                override_timer = time.time()
             #if collision timer is none
+            #need to have a first-time condition detection flag (infract_registered and collided) to distinguish from
+            #subsequent condition detection
+            #alternatively, can just use timer==None as detection flag
+
             if (infraction_occured(env) and not infract_registered) or (env.collision_timer is not None and not collided):
                 
                 fv = False
@@ -182,17 +195,16 @@ def main():
                     elif time.time() - env.collision_timer >= COLLISION_TIMEOUT - 0.1:
                         #intervene and manually set autocar's location to target
                         if not env.force_update_location():
-                            
+                            print("force update location failed, resetting...")
                             #should not have happed normally
                             done = True
-
                         collided = False
                     elif time.time() - env.collision_timer < COLLISION_TIMEOUT - 0.1:
                         if not override:
                             override = True
                             override_timer = time.time()
 
-                    
+                #
                 if infract_registered:
                     if not infraction_occured(env):
                         fv = True
@@ -210,24 +222,15 @@ def main():
             if not infract_registered and not collided:
                 if override:
                     assert override_timer is not None
-                if override and override_timer is not None:
-                        if env.get_speed() > 1:
+                if override:
+                    
+                        if env.get_speed() > 1 or time.time() - override_timer > 3:
                             print("ending override")
                            
                             override = False
                             override_timer += time.time() - override_timer
                             override_timer = None
                             
-                        elif time.time() - override_timer > 3:
-                            
-                            override = False
-                            total_override_time += time.time() - override_timer
-                            override_timer = None
-                            
-                    # else:
-                    #     print("ending override")
-                    #     override = False
-
             reached_dest = env.reached_dest()
             #a force_update_location will make sure collided = False and infract = False
             if reached_dest or env.force_update_targ:
@@ -297,7 +300,8 @@ def main():
                 break
             
              
-
+    env.cl.stop_recorder()
+    
     end = time.time() - start
 
     print("############################")

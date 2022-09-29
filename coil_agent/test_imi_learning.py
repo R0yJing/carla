@@ -1,9 +1,19 @@
+from threading import Thread
 
-import numpy as np
-import imitation_learning
-agent = imitation_learning.ImitationLearning('', False)
-img = np.random.uniform(0, 255, (600, 800, 3)).astype('uint8')
-speed = 20
+b = False
+def task():
+    global b
+    while not b:
+        print("alive")
+    while b:
+        print("dead")
+def func():
+    global b
+    b = True
+t = Thread(target=task, daemon=True)
+t.start()
+import time
 
-dir = 2
-print(agent.get_action(img, speed, dir))
+time.sleep(3)
+func()
+time.sleep(3)

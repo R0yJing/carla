@@ -2,10 +2,8 @@
 *.pkl
 recordings/training/normalised-recording
 experiments.py
-*.h5
 *.pyc
 *.png
 *.json
-checkpoints/
 coil_agent/model/
 *.pth

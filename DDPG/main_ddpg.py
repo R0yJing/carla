@@ -14,7 +14,7 @@ def main(evaluate=False):
     
     env = CarEnv([0,0,0], [0], skip_turn_samples=True )
     agent = Agent(input_dims=((IM_HEIGHT, IM_WIDTH, 3), (1,), (3,)),
-            n_actions=3, load_checkpoint=False)
+            n_actions=3, load_checkpoint=True)
     n_games = 249
 
     figure_file = 'DDPG\plots\ddpg.png'
